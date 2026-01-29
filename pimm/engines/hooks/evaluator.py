@@ -466,7 +466,13 @@ class PretrainEvaluator(HookBase):
                 input_dict[key] = input_dict[key].cuda(non_blocking=True)
 
         with torch.inference_mode():
-            point = self.get_backbone()(input_dict)
+            if getattr(self.trainer.cfg, "enable_amp", False):
+                amp_dtype = getattr(self.trainer.cfg, "amp_dtype", "bfloat16")
+                dtype = torch.bfloat16 if amp_dtype == "bfloat16" else torch.float16
+                with torch.amp.autocast(device_type="cuda", dtype=dtype):
+                    point = self.get_backbone()(input_dict)
+            else:
+                point = self.get_backbone()(input_dict)
             while "pooling_parent" in point.keys():
                 parent = point.pop("pooling_parent")
                 inverse = point.pop("pooling_inverse")
