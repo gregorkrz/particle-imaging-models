@@ -32,7 +32,7 @@ RUN conda install -c conda-forge -y \
 # Pip packages
 RUN pip install --no-cache-dir --upgrade pip \
   && pip install --no-cache-dir \
-    scikit-learn netifaces pynvml rich safetensors pandas psutil jupyterlab "cuml-12==26.2.*" \
+    scikit-learn netifaces nvidia-ml-py rich safetensors pandas psutil jupyterlab \
     peft timm huggingface_hub ftfy regex tqdm \
     torch-geometric \
   && pip install --no-cache-dir \
