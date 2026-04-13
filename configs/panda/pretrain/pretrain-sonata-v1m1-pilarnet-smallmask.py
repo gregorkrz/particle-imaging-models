@@ -259,7 +259,7 @@ hooks = [
     dict(
         type="WandbNamer",
         keys=("model.type", "data.train.max_len", "amp_dtype", "seed"),
-        separator="-",
+        sep="-",
     ),
     # dict(type="RuntimeProfilerV2", interrupt=True),
     dict(
