@@ -218,17 +218,13 @@ Example configs can be found in:
 
 ### PILArNet-M
 
-Download the dataset from Hugging Face:
+Download the 168GB dataset from Hugging Face:
 
 ```bash
-python tools/download_pilarnet.py --version v2
+python tools/download_pilarnet.py --version v2 --output_dir /path/to/dir
 ```
 
-Data saves to `~/.cache/pimm/pilarnet/v2` by default and is auto-detected. To use a custom path, create a `.env` file in the repo root (see `example.env`):
-
-```
-PILARNET_DATA_ROOT_V2=/path/to/pilarnet/v2
-```
+Data saves to `~/.cache/pimm/pilarnet/v2` if `output_dir` is not provided. After downloading the dataset, run `cp example.env .env` and set `PILARNET_DATA_ROOT_V2`. This will allow the dataloader to automatically find the data.
 
 PILArNet has two revisions. **v2** is recommended for new models (adds PID, momentum, and vertex information). **v1** is the original dataset from the PoLAr-MAE paper. Events differ between splits, so models trained on v1 should be evaluated on v1.
 
