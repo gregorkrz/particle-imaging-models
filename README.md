@@ -95,7 +95,7 @@ Requires CUDA 11.6+ for FlashAttention (set `enable_flash=False` in configs if u
 SLURM templates are provided for multi-node training:
 
 ```bash
-cp scripts/slurm/multinode.slurm.sbatch my_job.sh  # generic cluster
+cp scripts/slurm/multinode.slurm.sbatch my_job.sh   # generic / SLAC cluster
 cp scripts/slurm/multinode.nersc.sbatch my_job.sh   # NERSC Perlmutter
 # edit SBATCH headers + experiment section, then:
 sbatch my_job.sh
@@ -118,16 +118,12 @@ sh scripts/train.sh -d <dataset> -c <config> [options]
 | `-n` | Experiment name (default: auto-generated) |
 | `-g` | GPUs per machine (default: all available) |
 | `-m` | Number of machines (default: 1) |
-| `-w` | Path to checkpoint (for fine-tuning or resuming) |
+| `-w` | Path to checkpoint (to be used by CheckpointLoader) |
 | `-r true` | Resume training from last checkpoint |
 | `-C` | Dev mode: skip code snapshot, run from repo source |
 | `-h` | Show full help |
 
 ```bash
-# List available configs
-sh scripts/train.sh --list
-sh scripts/train.sh --list panda/pretrain
-
 # Override config values
 sh scripts/train.sh -d panda/pretrain -c pretrain-sonata-v1m1-pilarnet-smallmask \
   -- --options epoch=10 data.train.max_len=1000
@@ -141,16 +137,11 @@ sh scripts/train.sh -d panda/pretrain -c pretrain-sonata-v1m1-pilarnet-smallmask
   -n my_experiment -r true
 ```
 
-Testing:
+See [Config Structure](#config-structure) for more on how configs work.
 
-```bash
-sh scripts/test.sh -d panda/semseg -c semseg-pt-v3m2-pilarnet-ft-5cls-lin \
-  -n my_experiment -w model_best
-```
+By default, `train.sh` snapshots the codebase into `exp/<dataset>/<name>/code/` and runs the code from this snapshot for reproducibility. Use `-C` to skip this during development.
 
-By default, `train.sh` snapshots the codebase into `exp/<dataset>/<name>/code/` for reproducibility. Use `-C` to skip this during development.
-
-Checkpoints save to `exp/<dataset>/<name>/model/`. To redirect to a separate disk, set `MODEL_DIR` in your `.env` file or environment.
+Model checkpoints, which can be quite large, are saved to `exp/<dataset>/<name>/model/`. To redirect to a separate disk, set `MODEL_DIR` in your `.env` file or environment; this will save the checkpoint to `MODEL_DIR` and symlink it to `exp/<dataset>/<name>/model`.
 
 ## Data Format
 
@@ -162,7 +153,7 @@ Point cloud data should be organized with the following structure:
     'feat': (N, C),            # Hit features (charge, time, etc.)
     'segment': (N,1),          # Semantic labels (optional, for training)
     'instance': (N,1),         # Instance IDs (optional, for training)
-    ...
+    ...                        # Extra attributes
 }
 ```
 
@@ -255,7 +246,7 @@ Models use `vXmY` naming (version X, mode Y). Different modes indicate small arc
 
 ### Pre-training
 
-- **[Panda/Sonata](https://arxiv.org/abs/2503.16429)** — DINO-style self-supervised learning with teacher-student framework and online prototype clustering. Used in Panda.
+- **[Panda/Sonata](https://arxiv.org/abs/2503.16429)** — DINO-style self-supervised learning with teacher-student framework and online prototype clustering.
 - **[PoLAr-MAE](https://arxiv.org/abs/2502.02558)** — masked autoencoder with chamfer + energy reconstruction losses.
 
 ### Instance / Panoptic Segmentation
