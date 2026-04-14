@@ -45,7 +45,7 @@ We are looking at including the following models/modalities in the future:
 ### Using the container (recommended)
 
 ```bash
-git clone https://github.com/youngsm/particle-imaging-models.git
+git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
 cd particle-imaging-models
 apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
 ```
@@ -56,6 +56,8 @@ apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
 apptainer exec --nv --bind XXX /path/to/pimm.sif \
   sh scripts/train.sh -g 1 -d panda/pretrain -c pretrain-sonata-v1m1-pilarnet-smallmask
 ```
+
+where XXX is a directory (not including your home path) you'd like to ensure that pimm will be able to see inside the container. This is not needed unless you are working on an HPC with directories organized in a non-standard way. For example, at SLAC National Laboratory's S3DF cluster, you must `--bind /sdf,/lscratch`.
 
 #### Multi-GPU:
 
@@ -150,17 +152,67 @@ By default, `train.sh` snapshots the codebase into `exp/<dataset>/<name>/code/` 
 
 Checkpoints save to `exp/<dataset>/<name>/model/`. To redirect to a separate disk, set `MODEL_DIR` in your `.env` file or environment.
 
-## Configuration
+## Data Format
 
-Configs are Python dicts in `configs/` with `_base_` inheritance:
+Point cloud data should be organized with the following structure:
+
+```python
+{
+    'coord': (N, 3),           # 3D hit positions [x, y, z]
+    'feat': (N, C),            # Hit features (charge, time, etc.)
+    'segment': (N,1),          # Semantic labels (optional, for training)
+    'instance': (N,1),         # Instance IDs (optional, for training)
+    ...
+}
+```
+
+The data often needs to be re-scaled to new domains that lead to more efficient training
+(e.g., centering/scaling of coordinates to [-1,1]$^3$). This can be done within the Dataset class, or from a Transform. See the transform sections of configuration files for more details.
+
+### Packed Data Format
+
+This library works with packed data, where all batched quantities are in two dimensions instead of three, i.e. `(N, 3)` instead of `(B, N, 3)`. This is because point clouds are variable length, and getting to a 3 dimensional tensor would require padding. Instead of padding, there is an `offset` tensor, which is of length `B` and gives the indices in the packed tensors at which a point cloud ends and a new one starts.
+
+`Offset` is conceptually similar to the concept of `Batch` in PyG, and can be seen as the cumulative sum of a `lengths` tensor. A visual illustration of batch and offset is as follows:
+
+<p align="center">
+    <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/pointcept/assets/main/pointcept/offset_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/pointcept/assets/main/pointcept/offset.png">
+    <img alt="pointcept" src="https://raw.githubusercontent.com/pointcept/assets/main/pointcept/offset.png" width="480">
+    </picture><br>
+</p>
+
+## Configuration System
+
+Configurations are Python dictionary-based files located in the `configs/` directory. Each config file defines the model architecture, dataset settings, training hyperparameters, and different hooks to run during training (checkpoint saving, logging, evaluation).
+
+### Config Structure
+
+Configs use a hierarchical structure with `_base_` inheritance:
 
 ```python
 _base_ = ["../../_base_/default_runtime.py"]
+
+# Override or add settings
 model = dict(type="PT-v3m2", ...)
 data = dict(train=dict(...), val=dict(...))
 ```
 
-Override any value from the command line with `-- --options key=value nested.key=value`.
+### Modifying Configs
+
+You can modify configs in two ways:
+
+1. Edit the config file directly
+2. Override via command line using `--options`:
+   ```bash
+   sh scripts/train.sh ... -- --options epoch=50 data.train.max_len=500000
+   ```
+
+Example configs can be found in:
+- `configs/panda/pretrain/` - Pre-training configurations
+- `configs/panda/semseg/` - Semantic segmentation configurations  
+- `configs/panda/panseg/` - Panoptic segmentation configurations
 
 ## Dataset Preparation
 

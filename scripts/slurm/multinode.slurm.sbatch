@@ -16,12 +16,18 @@ set -e
 mkdir -p slurm_logs
 export NCCL_SOCKET_IFNAME=^docker0,lo
 
+# Uncomment for SLAC S3DF:
+# export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+# export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+# BIND="/sdf,/fs,/lscratch"
+
 # ── Edit these ──────────────────────────────────────────────────
 SIF=pimm.sif
 DATASET="panda/pretrain"
 CONFIG="pretrain-sonata-v1m1-pilarnet-smallmask"
 EXTRA=""  # e.g. "-- --options epoch=100 data.train.max_len=100000"
+BIND="${BIND:-}"
 # ────────────────────────────────────────────────────────────────
 
 CMD="sh scripts/train.sh -m $SLURM_NNODES -g $SLURM_GPUS_ON_NODE -d $DATASET -c $CONFIG $EXTRA"
-srun apptainer exec --nv $SIF bash -c "$CMD"
+srun apptainer exec --nv ${BIND:+--bind $BIND} $SIF bash -c "$CMD"
