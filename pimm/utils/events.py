@@ -58,9 +58,11 @@ class EventWriter:
     """
 
     def write(self):
+        """Flush newly available events to the concrete output backend."""
         raise NotImplementedError
 
     def close(self):
+        """Release backend resources held by this writer."""
         pass
 
 
@@ -116,6 +118,7 @@ class JSONWriter(EventWriter):
         self._last_write = -1
 
     def write(self):
+        """Append unwritten scalar metrics to the JSON-lines file."""
         storage = get_event_storage()
         to_save = defaultdict(dict)
 
@@ -140,6 +143,7 @@ class JSONWriter(EventWriter):
             pass
 
     def close(self):
+        """Close the metrics file handle."""
         self._file_handle.close()
 
 
@@ -162,6 +166,7 @@ class TensorboardXWriter(EventWriter):
         self._last_write = -1
 
     def write(self):
+        """Write scalars, images, and histograms to TensorBoard."""
         storage = get_event_storage()
         new_last_write = self._last_write
         for k, (v, iter) in storage.latest_with_smoothing_hint(
@@ -190,6 +195,7 @@ class TensorboardXWriter(EventWriter):
             storage.clear_histograms()
 
     def close(self):
+        """Close the TensorBoard writer if it was created successfully."""
         if hasattr(self, "_writer"):  # doesn't exist when the code fails at import
             self._writer.close()
 
@@ -218,6 +224,7 @@ class CommonMetricPrinter(EventWriter):
         )
 
     def _get_eta(self, storage) -> Optional[str]:
+        """Estimate the remaining wall-clock time from stored iteration time."""
         if self._max_iter is None:
             return ""
         iteration = storage.iter
@@ -240,6 +247,7 @@ class CommonMetricPrinter(EventWriter):
             return eta_string
 
     def write(self):
+        """Log a compact progress line with loss, timing, lr, and memory."""
         storage = get_event_storage()
         iteration = storage.iter
         if iteration == self._max_iter:
@@ -463,10 +471,12 @@ class EventStorage:
 
     @iter.setter
     def iter(self, val):
+        """Set the current iteration number."""
         self._iter = int(val)
 
     @property
     def iteration(self):
+        """Return the current iteration number for backward compatibility."""
         # for backward compatibility
         return self._iter
 
@@ -505,32 +515,37 @@ class EventStorage:
         self._histograms = []
 
     def reset_history(self, name):
+        """Reset one named scalar history."""
         ret = self._history.get(name, None)
         if ret is None:
             raise KeyError("No history metric available for {}!".format(name))
         ret.reset()
 
     def reset_histories(self):
+        """Reset all scalar histories stored in this object."""
         for name in self._history.keys():
             self._history[name].reset()
 
 
 class AverageMeter:
-    """Computes and stores the average and current value"""
+    """Compute and store the latest value and running average."""
 
     def __init__(self):
+        """Initialize an empty average meter."""
         self.val = 0
         self.avg = 0
         self.total = 0
         self.count = 0
 
     def reset(self):
+        """Clear all accumulated meter state."""
         self.val = 0
         self.avg = 0
         self.total = 0
         self.count = 0
 
     def update(self, val, n=1):
+        """Add ``n`` observations with value ``val``."""
         self.val = val
         self.total += val * n
         self.count += n
@@ -604,14 +619,18 @@ class HistoryBuffer:
 
 
 class ExceptionWriter:
+    """Context manager that logs exceptions before exiting the process."""
 
     def __init__(self):
+        """Create an exception logger bound to this module."""
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self):
+        """Enter the exception logging context."""
         pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Log the traceback and exit if the context raised an exception."""
         if exc_type:
             tb = traceback.format_exception(exc_type, exc_val, exc_tb)
             formatted_tb_str = "".join(tb)
@@ -656,11 +675,13 @@ class WandbWriter(EventWriter):
         self._last_write = -1
 
     def _initialize_wandb(self):
+        """Initialize W&B lazily when the first metrics are written."""
         if not self._wandb_initialized:
             wandb.init(**self._wandb_kwargs)
             self._wandb_initialized = True
 
     def write(self):
+        """Write scalars, images, and histograms to W&B."""
         storage = get_event_storage()
         
         if not self._wandb_initialized:
@@ -700,12 +721,13 @@ class WandbWriter(EventWriter):
             storage.clear_histograms()
 
     def close(self):
+        """Finish the active W&B run if this writer initialized one."""
         if self._wandb_initialized:
             wandb.finish()
 
 
 def _to_serializable(obj):
-    """recursively convert a config object to a plain JSON-safe structure."""
+    """Recursively convert a config object to a plain JSON-safe structure."""
     import types
     if hasattr(obj, '_cfg_dict'):  # Config wrapper
         return _to_serializable(obj._cfg_dict)
@@ -735,6 +757,7 @@ class WandbSummaryWriter:
         max_queue=10,
         flush_secs=120,
         filename_suffix="",
+        step_offset=0,
         **kwargs
     ):
         """
@@ -747,9 +770,13 @@ class WandbSummaryWriter:
             max_queue: Compatibility parameter, not used
             flush_secs: Compatibility parameter, not used
             filename_suffix: Compatibility parameter, not used
+            step_offset: Value added to every logged step. This only affects
+                logging; trainer state, schedules, checkpoints, and eval cadence
+                remain local to the current run.
             **kwargs: Additional arguments passed to wandb.init
         """
         self.run = None
+        self.step_offset = int(step_offset or 0)
         if not wandb.run:
             if log_dir:
                 kwargs.setdefault('dir', log_dir)
@@ -762,6 +789,11 @@ class WandbSummaryWriter:
             self.run = wandb.run
             
         self.step = 0
+
+    def _log_step(self, global_step=None):
+        """Return the W&B step after applying any resume offset."""
+        step = self.step if global_step is None else global_step
+        return int(step) + self.step_offset
     
     def add_scalar(
         self,
@@ -773,7 +805,7 @@ class WandbSummaryWriter:
         double_precision=False,
     ):
         """Log a scalar value."""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         wandb.log({tag: scalar_value}, step=step)
         if global_step is None:
             self.step += 1
@@ -786,7 +818,7 @@ class WandbSummaryWriter:
         walltime=None
     ):
         """Log multiple scalars at once."""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         log_dict = {f"{main_tag}/{tag}": value 
                    for tag, value in tag_scalar_dict.items()}
         wandb.log(log_dict, step=step)
@@ -803,7 +835,7 @@ class WandbSummaryWriter:
         max_bins=None,
     ):
         """Log a histogram."""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         
         if isinstance(values, torch.Tensor):
             values = values.detach().cpu().numpy()
@@ -821,7 +853,7 @@ class WandbSummaryWriter:
         dataformats="CHW"
     ):
         """Log an image."""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         
         if isinstance(img_tensor, torch.Tensor):
             img_tensor = img_tensor.detach().cpu().numpy()
@@ -839,7 +871,7 @@ class WandbSummaryWriter:
         dataformats="NCHW"
     ):
         """Log multiple images."""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         
         if isinstance(img_tensor, torch.Tensor):
             img_tensor = img_tensor.detach().cpu().numpy()
@@ -863,7 +895,7 @@ class WandbSummaryWriter:
         walltime=None,
     ):
         """Log a matplotlib figure."""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         
         wandb.log({tag: wandb.Image(figure)}, step=step)
         
@@ -881,7 +913,7 @@ class WandbSummaryWriter:
         walltime=None
     ):
         """Log text."""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         
         wandb.log({tag: wandb.Html(f"<pre>{text_string}</pre>")}, step=step)
         
@@ -897,7 +929,7 @@ class WandbSummaryWriter:
         walltime=None
     ):
         """Log a video."""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         
         if isinstance(vid_tensor, torch.Tensor):
             vid_tensor = vid_tensor.detach().cpu().numpy()
@@ -918,7 +950,7 @@ class WandbSummaryWriter:
         metadata_header=None,
     ):
         """Log embeddings - use wandb.plot.scatter for this functionality"""
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         
         if isinstance(mat, torch.Tensor):
             mat = mat.detach().cpu().numpy()
@@ -980,7 +1012,7 @@ class WandbSummaryWriter:
             self.run.config[key] = value
             
         # Log metrics
-        step = global_step if global_step is not None else self.step
+        step = self._log_step(global_step)
         wandb.log(metric_dict, step=step)
         
         if global_step is None:
@@ -996,7 +1028,9 @@ class WandbSummaryWriter:
             wandb.finish()
             
     def __enter__(self):
+        """Enter a SummaryWriter-compatible context."""
         return self
         
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Close the writer when leaving a context manager block."""
         self.close()

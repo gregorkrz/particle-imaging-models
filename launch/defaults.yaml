@@ -1,0 +1,21 @@
+resources:
+  nnodes: 1
+  nproc_per_node: 4
+  cpus_per_proc: 12
+  time: "24:00:00"
+
+slurm:
+  output: "slurm_logs/%j_%x.txt"
+  gpu_directive: gres
+
+run:
+  timestamp: true
+  wandb_name: null
+
+train:
+  resume: false
+  code_copy: true
+  options: {}
+
+container:
+  repo_mount: /opt/pimm/src

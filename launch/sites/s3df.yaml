@@ -1,0 +1,36 @@
+_base_: slurm.yaml
+
+site: s3df
+
+paths:
+  repo_root: /sdf/home/y/youngsam/sw/dune/representations/particle-imaging-models
+
+submit:
+  setup:
+    - source ~/.bashrc >/dev/null 2>&1
+    - mamba activate pointcept-torch2.5.0-cu12.4
+
+resources:
+  nproc_per_node: 1 # 1 gpus
+  mem: 512G
+
+slurm:
+  account: mli:nu-ml-dev
+  partition: ampere
+
+container:
+  runtime: singularity
+  image: /sdf/group/neutrino/images/develop.sif
+  binds:
+    - /sdf
+    - /fs
+    - /sdf/scratch
+    - /lscratch
+  setup:
+    - source ~/.bashrc
+    - mamba activate pointcept-torch2.5.0-cu12.4
+
+env:
+  NCCL_SOCKET_IFNAME: "^docker0,lo"
+  REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
