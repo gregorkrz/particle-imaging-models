@@ -167,7 +167,16 @@ fi
 # ─── Auto-generate experiment name if not provided ──────────────
 if [ -z "${EXP_NAME}" ]; then
   if [ "${CONFIG}" != "None" ]; then
-    CURRENT_DATETIME=$(date +"%Y-%m-%d_%H-%M-%S")
+    # Derive the timestamp from the Slurm job start time so every node in a
+    # multi-node job agrees on the exp name. Per-node `date` makes ranks pick
+    # names a second apart -> the rank-0 code snapshot lands in a different dir
+    # than the other ranks wait on -> snapshot-wait deadlock -> torchrun
+    # rendezvous times out. Fall back to `date` for non-Slurm/local runs.
+    if [ -n "${SLURM_JOB_START_TIME:-}" ]; then
+      CURRENT_DATETIME=$(date -d "@${SLURM_JOB_START_TIME}" +"%Y-%m-%d_%H-%M-%S")
+    else
+      CURRENT_DATETIME=$(date +"%Y-%m-%d_%H-%M-%S")
+    fi
     EXP_NAME="${CONFIG}-${CURRENT_DATETIME}"
   else
     EXP_NAME="debug"
@@ -292,6 +301,13 @@ run_python() {
   fi
   RDZV_ID=${PIMM_RDZV_ID:-${SLURM_JOB_ID:-pimm}}
   RDZV_BACKEND=${PIMM_RDZV_BACKEND:-c10d}
+  # Force MASTER_ADDR to a routable IPv4: a bare node hostname can resolve to a
+  # non-routable IPv6 link-local (fe80::...) on-node, which breaks cross-node
+  # rendezvous. getent ahostsv4 forces IPv4; an IP passes through unchanged.
+  if [ -n "${MASTER_ADDR:-}" ]; then
+    MASTER_IPV4=$(getent ahostsv4 "$MASTER_ADDR" 2>/dev/null | awk 'NR==1{print $1}')
+    [ -n "$MASTER_IPV4" ] && MASTER_ADDR="$MASTER_IPV4"
+  fi
   RDZV_ENDPOINT=${MASTER_ADDR:-127.0.0.1}:${MASTER_PORT:-29500}
   exec $PYTHON -m torch.distributed.run \
     --nnodes="$NUM_MACHINE" \

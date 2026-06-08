@@ -80,6 +80,20 @@ def get_slurm_env():
     }
 
 
+def _resolve_ipv4(host: str) -> str:
+    """Resolve a host to a routable IPv4, returning it unchanged on failure.
+
+    A bare node hostname can resolve to a non-routable IPv6 link-local address
+    (fe80::...) on the node itself, which breaks the cross-node c10d rendezvous;
+    force IPv4. An address that is already an IP passes through unchanged.
+    """
+    import socket
+    try:
+        return socket.getaddrinfo(host, None, socket.AF_INET)[0][4][0]
+    except (socket.gaierror, IndexError, OSError):
+        return host
+
+
 def setup_distributed():
     """Initialize torch.distributed from torchrun or SLURM environment."""
     logger = logging.getLogger(__name__)
@@ -94,7 +108,14 @@ def setup_distributed():
         rank = int(os.environ.get('RANK', 0))
         local_rank = int(os.environ.get('LOCAL_RANK', 0))
         local_world_size = int(os.environ.get('LOCAL_WORLD_SIZE', world_size))
-        tasks_per_node_list = [local_world_size]
+        # One entry per node, not just this node: the per-node process group used
+        # by get_local_rank() is built by partitioning [0, world_size) with this
+        # list. A single-element [local_world_size] only builds node 0's group, so
+        # every other node falls through to the single-rank fallback and reports
+        # local_rank=0 for ALL its ranks -> they collide on cuda:0 ("Duplicate GPU
+        # detected"). Replicate across all nodes.
+        num_nodes = max(1, world_size // max(1, local_world_size))
+        tasks_per_node_list = [local_world_size] * num_nodes
         node_id = int(os.environ.get('GROUP_RANK', os.environ.get('SLURM_NODEID', 0)))
     elif slurm_env is not None:
         world_size = slurm_env['ntasks']
@@ -134,6 +155,10 @@ def setup_distributed():
         else:
             master_addr = '127.0.0.1'
         os.environ['MASTER_ADDR'] = master_addr
+    # Normalize to a routable IPv4 whether derived above or set by the launcher
+    # (submitit/torchrun) -- a bare hostname can resolve to an IPv6 link-local
+    # on-node and break cross-node rendezvous.
+    os.environ['MASTER_ADDR'] = _resolve_ipv4(os.environ['MASTER_ADDR'])
     
     # Derive a stable port for SLURM jobs so all ranks rendezvous together.
     if 'MASTER_PORT' not in os.environ:
