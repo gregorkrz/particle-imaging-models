@@ -170,7 +170,7 @@ data = dict(
     train=dict(
         type="PILArNetH5Dataset",
         split="train",
-        data_root="/sdf/home/y/youngsam/data/dune/larnet/h5/reprocessed/",
+        #data_root="/sdf/home/y/youngsam/data/dune/larnet/h5/reprocessed/",
         revision="v2",
         transform=transform,
         test_mode=False,
@@ -183,7 +183,7 @@ data = dict(
     test=dict(
         type="PILArNetH5Dataset",
         split="val",
-        data_root="/sdf/home/y/youngsam/data/dune/larnet/h5/reprocessed/",
+        #data_root="/sdf/home/y/youngsam/data/dune/larnet/h5/reprocessed/",
         revision="v2",
         transform=[
             dict(
@@ -265,7 +265,7 @@ data = dict(
     val=dict(
         type="PILArNetH5Dataset",
         split="val",
-        data_root="/sdf/home/y/youngsam/data/dune/larnet/h5/reprocessed/",
+        #data_root="/sdf/home/y/youngsam/data/dune/larnet/h5/reprocessed/",
         revision="v2",
         transform=[
             dict(
