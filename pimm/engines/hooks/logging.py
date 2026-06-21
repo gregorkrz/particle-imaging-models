@@ -193,10 +193,15 @@ class IterationTimer(HookBase):
 class InformationWriter(HookBase):
     """Assemble console and writer logs from scalar model outputs."""
 
-    def __init__(self, log_frequency=1):
-        """Configure how often per-step training summaries are emitted."""
+    def __init__(self, log_frequency=1, step_offset=0):
+        """Configure how often per-step training summaries are emitted.
+
+        step_offset shifts the logged global step (e.g. to continue a warm-started
+        run's wandb x-axis from where the parent checkpoint left off).
+        """
         self.model_output_keys = []
         self.log_frequency = max(1, int(log_frequency))
+        self.step_offset = int(step_offset)
 
     def before_train(self):
         """Initialize the shared iteration-info string used by logging hooks."""
@@ -207,7 +212,7 @@ class InformationWriter(HookBase):
         # compute global step same way as GradientNormLogger for consistency
         current_epoch = self.trainer.comm_info["epoch"] + 1
         current_iter = self.trainer.comm_info["iter"]
-        return (current_epoch - 1) * len(self.trainer.train_loader) + current_iter + 1
+        return (current_epoch - 1) * len(self.trainer.train_loader) + current_iter + 1 + self.step_offset
 
     def before_step(self):
         """Append epoch and batch position to the current iteration summary."""

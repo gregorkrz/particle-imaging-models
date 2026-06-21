@@ -25,3 +25,18 @@ benchmarks/
 # autoresearch artifacts
 results.tsv
 run.log
+
+# checkpoints / array dumps (never commit binaries)
+*.pth
+*.ckpt
+*.npz
+
+# third-party clones under libs/ — ignore everything except the vendored,
+# tracked build libs (new libs are ignored by default; add a negation to track)
+libs/*
+!libs/cnms/
+!libs/pointgroup_ops/
+!libs/pointops/
+!libs/pointops2/
+!libs/pointrope/
+!libs/pytorch3d_ops/

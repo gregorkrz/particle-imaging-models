@@ -335,6 +335,40 @@ hooks = [
 ```
 
 
+## Checkpoint formats
+
+Training uses **one checkpoint format for every parallelism** — single-GPU,
+multi-GPU, and multi-node all write the same thing, so resume is predictable
+regardless of how many devices you used.
+
+
+```
+exp/<dataset>/<name>/model/
+  last/                 # resume from here
+    weights.pth         # portable model weights — plain `torch.load(...)["state_dict"]`
+    trainer.dcp/        # optimizer / scheduler / RNG / dataloader as a DCP checkpoint
+    .complete           # written last; marks the checkpoint atomically complete
+  model_best.pth        # best-metric model weights only (for eval / export)
+```
+
+- **Portable weights, always.** `last/weights.pth` and `model_best.pth` are
+  ordinary single-file state dicts — load them anywhere without DCP.
+- **Reshards automatically.** The DCP `trainer.dcp/` lets you resume on a
+  different number of GPUs/nodes with no extra flags.
+- **Atomic.** Each save publishes via a temp dir + rename and a `.complete`
+  marker, so an interrupted save never corrupts the previous checkpoint.
+
+### `legacy`
+
+A single monolithic `model_last.pth` (model + trainer state in one file),
+plus a `model_best.pth` copy. Simple and dependency-free, but it does not
+reshard across world sizes (resume on a different GPU count needs
+`resume_strict_state=False`). You can set this with:
+
+```bash
+pimm launch --train.config <config> --run.name <name> -- checkpoint_format=legacy
+```
+
 ## Acknowledgements
 
 Built on [Pointcept](https://github.com/Pointcept/Pointcept), [torchtitan](https://github.com/pytorch/torchtitan), and [torchrl](https://github.com/pytorch/rl). Thanks to them!

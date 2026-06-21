@@ -292,6 +292,16 @@ def atomic_torch_save(payload, filename):
     os.replace(tmp, filename)
 
 
+def save_model_weights_file(payload, filename):
+    """Save just the model weights as a portable single-file checkpoint.
+
+    Produces the same ``{"state_dict": ...}`` layout as the split-checkpoint
+    weight file, so it loads identically via ``checkpoint_model_state_dict`` and
+    a plain ``torch.load`` (used for ``model_best.pth`` and iter snapshots).
+    """
+    atomic_torch_save({"state_dict": checkpoint_model_state_dict(payload)}, filename)
+
+
 def save_dcp_checkpoint(payload, checkpoint_dir):
     """Save a distributed checkpoint directory with atomic publish semantics."""
     import torch.distributed.checkpoint as dcp
@@ -355,7 +365,9 @@ def load_dcp_trainer_state(checkpoint_dir, trainer):
     if not is_complete_dcp_checkpoint(checkpoint_dir):
         raise FileNotFoundError(f"Incomplete DCP checkpoint: {checkpoint_dir}")
     payload = empty_trainer_state_payload(trainer)
-    dcp.load(payload, checkpoint_id=checkpoint_dir)
+    from torch.distributed.checkpoint.default_planner import DefaultLoadPlanner
+    dcp.load(payload, checkpoint_id=checkpoint_dir,
+             planner=DefaultLoadPlanner(allow_partial_load=True))
     return payload
 
 
@@ -366,7 +378,9 @@ def load_dcp_checkpoint(checkpoint_dir, trainer):
     if not is_complete_dcp_checkpoint(checkpoint_dir):
         raise FileNotFoundError(f"Incomplete DCP checkpoint: {checkpoint_dir}")
     payload = empty_checkpoint_payload(trainer)
-    dcp.load(payload, checkpoint_id=checkpoint_dir)
+    from torch.distributed.checkpoint.default_planner import DefaultLoadPlanner
+    dcp.load(payload, checkpoint_id=checkpoint_dir,
+             planner=DefaultLoadPlanner(allow_partial_load=True))
     return payload
 
 
@@ -398,105 +412,101 @@ def _cfg_get(cfg, key, default=None):
     return getattr(cfg, key, default)
 
 
-def _parallel_strategy(cfg):
-    """Return the configured parallel strategy name."""
-    parallel_cfg = _cfg_get(cfg, "parallel", _cfg_get(cfg, "distributed", {}))
-    strategy = _cfg_get(parallel_cfg, "strategy", "ddp")
-    return str(strategy).lower()
-
-
-def _needs_dcp_checkpointing(trainer):
-    """Return whether this run should use DCP for durable training resume."""
-    cfg = getattr(trainer, "cfg", None)
-    chain_jobs = int(_cfg_get(cfg, "chain_jobs", 1) or 1)
-    return (
-        comm.get_world_size() > 1
-        or chain_jobs > 1
-        or _parallel_strategy(cfg) == "fsdp2"
-    )
-
-
 class CheckpointManager:
     """Own checkpoint format, save/load backends, and trainer resume semantics."""
 
     def __init__(self, trainer):
         self.trainer = trainer
 
-    def warn_non_dcp(self, backend_description):
-        """Warn when a serious distributed/resume run is not using DCP."""
-        if not _needs_dcp_checkpointing(self.trainer):
-            return
-        cfg = getattr(self.trainer, "cfg", None)
-        self.trainer.logger.warning(
-            "%s is not using DCP. This remains supported for legacy, local, and "
-            "export-style checkpoints, but DCP is the recommended training "
-            "checkpoint backend for multi-rank, chained, and FSDP2 runs. "
-            "Set hooks.CheckpointSaverIteration.backend=dcp for robust distributed "
-            "resume. world_size=%s, chain_jobs=%s, parallel.strategy=%s",
-            backend_description,
-            comm.get_world_size(),
-            _cfg_get(cfg, "chain_jobs", 1),
-            _parallel_strategy(cfg),
+    def _checkpoint_format(self, hook_backend=None):
+        """Resolve the on-disk checkpoint format."""
+        aliases = {"dcp": "standard", "torch": "legacy"}
+        fmt = _cfg_get(self.trainer.cfg, "checkpoint_format", None)
+        if fmt is None:
+            fmt = hook_backend
+        fmt = str(fmt or "standard").lower()
+        fmt = aliases.get(fmt, fmt)
+        if fmt not in ("standard", "legacy"):
+            raise ValueError(
+                "checkpoint_format must be 'standard' or 'legacy' "
+                f"(or the deprecated 'dcp'/'torch'), got {fmt!r}"
+            )
+        return fmt
+
+    def _write_checkpoint(
+        self, payload, *, fmt, is_best, step_count, save_freq, save_iter_checkpoints
+    ):
+        """Write a built payload in the resolved format.
+
+        Must be called on ALL ranks: the ``standard`` format performs a
+        collective DCP save. Rank-0-only side artifacts (the best/iter weight
+        files and the legacy single file) are guarded internally.
+        """
+        model_dir = os.path.join(self.trainer.cfg.save_path, "model")
+        best_file = os.path.join(model_dir, "model_best.pth")
+        do_iter_snapshot = bool(
+            save_iter_checkpoints and save_freq and step_count and step_count % save_freq == 0
         )
+        if fmt == "standard":
+            last_dir = os.path.join(model_dir, "last")
+            if is_main_process():
+                self.trainer.logger.info(
+                    f"Saving checkpoint to: {last_dir} (weights.pth + trainer/ DCP)"
+                )
+            save_split_checkpoint(payload, last_dir)  # collective: all ranks
+            if is_main_process():
+                if is_best:
+                    save_model_weights_file(payload, best_file)
+                if do_iter_snapshot:
+                    save_model_weights_file(
+                        payload, os.path.join(model_dir, f"iter_{step_count}.pth")
+                    )
+            return
+        # legacy: single monolithic file, written by rank 0 only
+        if is_main_process():
+            filename = os.path.join(model_dir, "model_last.pth")
+            self.trainer.logger.info("Saving checkpoint to: " + filename)
+            atomic_torch_save(payload, filename)
+            if is_best:
+                shutil.copyfile(filename, best_file)
+            if do_iter_snapshot:
+                shutil.copyfile(
+                    filename, os.path.join(model_dir, f"iter_{step_count}.pth")
+                )
 
     def save_epoch_checkpoint(self, *, is_best=False, step_count=0, save_freq=None):
-        """Save the legacy epoch/metric-oriented torch checkpoint."""
-        filename = os.path.join(self.trainer.cfg.save_path, "model", "model_last.pth")
-        self.trainer.logger.info("Saving checkpoint to: " + filename)
-        atomic_torch_save(build_checkpoint_payload(self.trainer), filename)
-        if is_best:
-            shutil.copyfile(
-                filename,
-                os.path.join(self.trainer.cfg.save_path, "model", "model_best.pth"),
-            )
-        if save_freq and step_count % save_freq == 0:
-            shutil.copyfile(
-                filename,
-                os.path.join(
-                    self.trainer.cfg.save_path,
-                    "model",
-                    f"iter_{step_count}.pth",
-                ),
-            )
+        """Save an epoch/metric-oriented checkpoint. Must run on all ranks."""
+        fmt = self._checkpoint_format()
+        payload = build_checkpoint_payload(self.trainer, distributed_rng=True)
+        self._write_checkpoint(
+            payload,
+            fmt=fmt,
+            is_best=is_best,
+            step_count=step_count,
+            save_freq=save_freq,
+            save_iter_checkpoints=bool(save_freq),
+        )
 
     def save_iteration_checkpoint(
         self,
         *,
-        backend="torch",
+        backend=None,
         is_best=False,
         step_count=0,
         save_freq=None,
         save_iter_checkpoints=False,
     ):
-        """Save the current structured checkpoint with the selected backend."""
+        """Save an iteration-oriented checkpoint. Must run on all ranks."""
+        fmt = self._checkpoint_format(backend)
         payload = build_checkpoint_payload(self.trainer, distributed_rng=True)
-        if backend == "dcp":
-            checkpoint_dir = os.path.join(self.trainer.cfg.save_path, "model", "last")
-            if is_main_process():
-                self.trainer.logger.info(
-                    "Saving model weights to: " + split_checkpoint_weight_file(checkpoint_dir)
-                )
-            save_split_checkpoint(payload, checkpoint_dir)
-            return
-
-        filename = os.path.join(self.trainer.cfg.save_path, "model", "model_last.pth")
-        if is_main_process():
-            self.trainer.logger.info("Saving checkpoint to: " + filename)
-            atomic_torch_save(payload, filename)
-            if is_best:
-                shutil.copyfile(
-                    filename,
-                    os.path.join(self.trainer.cfg.save_path, "model", "model_best.pth"),
-                )
-            if save_iter_checkpoints and save_freq and step_count % save_freq == 0:
-                shutil.copyfile(
-                    filename,
-                    os.path.join(
-                        self.trainer.cfg.save_path,
-                        "model",
-                        f"iter_{step_count}.pth",
-                    ),
-                )
+        self._write_checkpoint(
+            payload,
+            fmt=fmt,
+            is_best=is_best,
+            step_count=step_count,
+            save_freq=save_freq,
+            save_iter_checkpoints=save_iter_checkpoints,
+        )
 
     def load_weight_and_resume(self, *, keywords="", replacement=None, strict=False):
         """Load configured weights and restore training state when cfg.resume is true."""
@@ -517,7 +527,11 @@ class CheckpointManager:
             return
 
         message = f"No weight found at: {weight_path}"
-        if self.trainer.cfg.resume:
+        # A non-empty weight path that does not resolve is always an error: the
+        # user asked to load weights, so silently training from random init would
+        # hide a typo'd/moved checkpoint. Only the genuinely-unset case is a no-op
+        # (unless resuming, which requires a checkpoint).
+        if weight_path or self.trainer.cfg.resume:
             raise FileNotFoundError(message)
         self.trainer.logger.info(message)
 
@@ -545,16 +559,37 @@ class CheckpointManager:
             f"replace keyword with: {replacement}"
         )
         weight = OrderedDict()
+        strip_module = lambda s: s[7:] if s.startswith("module.") else s # noqa: E731
+        kw = strip_module(keywords)
+        repl = strip_module(replacement)
         for key, value in checkpoint_model_state_dict(checkpoint).items():
-            if not key.startswith("module."):
-                key = "module." + key
-            if keywords in key:
-                key = key.replace(keywords, replacement)
-            if comm.get_world_size() == 1:
-                key = key[7:]
+            bare = strip_module(key)
+            if kw and bare.startswith(kw):
+                bare = repl + bare[len(kw):]
+            key = bare if comm.get_world_size() == 1 else "module." + bare
             weight[key] = value
-        load_state_info = self.trainer.model.load_state_dict(weight, strict=strict)
-        self.trainer.logger.info(f"Missing keys: {load_state_info[0]}")
+        missing, unexpected = self.trainer.model.load_state_dict(weight, strict=strict)
+        n_model = len(self.trainer.model.state_dict())
+        n_loaded = n_model - len(missing)
+        self.trainer.logger.info(
+            f"Loaded {n_loaded}/{n_model} model params "
+            f"(missing: {len(missing)}, unexpected: {len(unexpected)})"
+        )
+        if missing:
+            self.trainer.logger.info(f"Missing keys: {missing}")
+        if unexpected:
+            self.trainer.logger.info(f"Unexpected keys: {unexpected}")
+        # Guard against a remap that matched nothing: with strict=False this would
+        # otherwise leave the whole model randomly initialized while training
+        # proceeds, with only an INFO line to distinguish it from a real load.
+        if n_model and n_loaded == 0:
+            raise RuntimeError(
+                f"Checkpoint load matched 0 of {n_model} model parameters "
+                f"(keywords={keywords!r}, replacement={replacement!r}). "
+                f"The model would train "
+                f"from random init. Fix the keyword/replacement, or set strict=True "
+                f"to find the mismatch."
+            )
 
     def resume_training_state(self, checkpoint):
         """Restore structured or legacy optimizer, scheduler, RNG, and cursor state."""
@@ -565,10 +600,52 @@ class CheckpointManager:
         if train_state is not None:
             dataloader_state = checkpoint_dataloader_state(checkpoint, train_state)
             train_state.dataloader_state = dataloader_state
+            # Decide whether to drop the torchdata StatefulDataLoader cursor BEFORE
+            # extracting it. That cursor asserts (lazily, on the first __iter__) on
+            # ANY change to the world_size or num_workers it was saved with, and
+            # local_object_state() below would itself raise on a world_size change
+            # under strict resume. So when the world_size or num_workers changed
+            # (or the resume is explicitly non-strict) we drop the cursor and
+            # restart the resumed epoch from its first batch -- model / optimizer /
+            # scheduler / global_step still restore below, so at most a sub-epoch of
+            # data order is replayed. This makes resharding across GPU/worker counts
+            # automatic without requiring resume_strict_state=False.
+            skip_cursor, reason = False, ""
+            if not strict_state:
+                skip_cursor, reason = True, "resume_strict_state=False"
+            elif isinstance(dataloader_state, dict) and dataloader_state.get(
+                "_pimm_distributed_state"
+            ):
+                saved_ws = int(
+                    dataloader_state.get(
+                        "world_size", len(dataloader_state.get("states", []))
+                    )
+                )
+                cur_ws = comm.get_world_size()
+                if saved_ws != cur_ws:
+                    skip_cursor, reason = True, f"world_size {saved_ws}->{cur_ws}"
+            if not skip_cursor:
+                saved_dl = checkpoint.get("dataloader", {})
+                saved_workers = saved_dl.get("num_workers") if isinstance(saved_dl, dict) else None
+                cur_workers = self.trainer.cfg.get("num_worker_per_gpu", None)
+                if (
+                    saved_workers is not None
+                    and cur_workers is not None
+                    and int(saved_workers) != int(cur_workers)
+                ):
+                    skip_cursor, reason = True, f"num_workers {saved_workers}->{cur_workers}"
+            # Extract this rank's cursor. When we are going to drop it anyway, load
+            # non-strictly so a world_size change does not raise here.
             local_dataloader_state = local_object_state(
                 dataloader_state,
-                strict=strict_state,
+                strict=strict_state and not skip_cursor,
             )
+            if skip_cursor and local_dataloader_state:
+                self.trainer.logger.warning(
+                    f"Skipping dataloader-cursor restore ({reason}); restarting the "
+                    "resumed epoch from its first batch."
+                )
+                local_dataloader_state = None
             apply_train_state_to_trainer(self.trainer, train_state)
             if train_state.iter_in_epoch > 0:
                 if not local_dataloader_state:

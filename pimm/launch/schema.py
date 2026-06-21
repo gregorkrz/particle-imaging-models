@@ -31,7 +31,7 @@ class Slurm:
     qos: str | None = None
     constraint: str | None = None
     dependency: str | None = None
-    output: str = "slurm_logs/%j_%x.txt"
+    output: str = "slurm_logs/slurm-%j.out"
     error: str | None = None
     gpu_directive: str = "gres"
     job_name: str | None = None

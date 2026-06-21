@@ -91,7 +91,7 @@ def submitit_folder(cfg: dict[str, Any], run_name: str) -> Path:
 def user_slurm_log_path(cfg: dict[str, Any], run_name: str) -> str:
     """Return the Slurm log path users should tail for training output."""
     slurm = cfg.get("slurm", {})
-    output = str(slurm.get("output") or "slurm_logs/%j_%x.txt")
+    output = str(slurm.get("output") or "slurm-%j.out")
     # sbatch expands %x to the Slurm job name, but submitit's generated srun
     # command writes its own output file. Resolve %x here so both land in the
     # same user-facing path.
