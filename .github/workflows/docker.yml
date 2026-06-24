@@ -13,11 +13,6 @@ on:
       - 'docker/**'
       - 'libs/**'
       - '.github/workflows/docker.yml'
-  pull_request:
-    paths:
-      - 'docker/**'
-      - 'libs/**'
-      - '.github/workflows/docker.yml'
   workflow_dispatch:
 
 concurrency:
