@@ -44,6 +44,18 @@ HF_URI_PREFIX = "hf://"
 # preference order. Centralized so download/upload/probe sites stay in sync.
 EXPORT_WEIGHT_NAMES = ("model.safetensors", "model.bin")
 
+# Config filename a pimm export writes (HF-idiomatic `config.json`) and the
+# names it will read, in preference order. `training_config.json` is the legacy
+# name kept for backward compatibility with already-published exports; the run
+# dir may also carry resolved_config.json / model_config.json.
+EXPORT_CONFIG_NAME = "config.json"
+EXPORT_CONFIG_READ_NAMES = (
+    "config.json",
+    "training_config.json",
+    "resolved_config.json",
+    "model_config.json",
+)
+
 
 def hf_cache_dir():
     """Resolve pimm's preferred HF download cache directory.

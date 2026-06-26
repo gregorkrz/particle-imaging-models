@@ -443,21 +443,56 @@ class VariablePointcloudMasking(nn.Module):
         return masked_indices, masked_mask, unmasked_indices, unmasked_mask
 
 
-class PointOrderEncoder(nn.Module):
-    """Sinusoidal positional encoding by point index (for equivariant MiniPointNet)."""
+class _TimeEmbedding(nn.Module):
+    """Parameter-free sinusoidal embedding of a point's order index.
+
+    Matches DeepLearnPhysics/PoLAr-MAE's ``TimeEmbedding`` exactly so the
+    ``original`` PointOrderEncoder reproduces that checkpoint's behavior.
+    """
 
     def __init__(self, dim: int):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim),
-        )
+        self.emb_dim = dim
+
+    def forward(self, ts: torch.Tensor) -> torch.Tensor:
+        half = self.emb_dim // 2
+        emb = math.log(10000) / (half - 1)
+        emb = torch.exp(torch.arange(half, device=ts.device).float() * -emb)
+        emb = ts[:, None].float() * emb[None, :]
+        return torch.cat((emb.sin(), emb.cos()), dim=-1)
+
+
+class PointOrderEncoder(nn.Module):
+    """Sinusoidal positional encoding by point index (for equivariant MiniPointNet).
+
+    ``style="mlp"`` (pimm default): inline sinusoidal embedding then a 2-layer
+    MLP (``net``). ``style="original"``: a ``TimeEmbedding`` followed by a single
+    ``Linear`` (``time_embed``), reproducing the original PoLAr-MAE module and its
+    checkpoint keys.
+    """
+
+    def __init__(self, dim: int, style: str = "mlp"):
+        super().__init__()
         self.dim = dim
+        self.style = style
+        if style == "mlp":
+            self.net = nn.Sequential(
+                nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim),
+            )
+        elif style == "original":
+            self.time_embed = nn.Sequential(_TimeEmbedding(dim), nn.Linear(dim, dim))
+        else:
+            raise ValueError(f"unknown PointOrderEncoder style: {style!r}")
 
     def forward(self, points: torch.Tensor) -> torch.Tensor:
         N = points.shape[1]
+        device = points.device
+        if self.style == "original":
+            inp = torch.arange(N, device=device)
+            return self.time_embed(inp).unsqueeze(0)
         half = self.dim // 2
-        omega = torch.exp(torch.arange(half, device=points.device).float() * -(math.log(10000) / (half - 1)))
-        pos = torch.arange(N, device=points.device).float()
+        omega = torch.exp(torch.arange(half, device=device).float() * -(math.log(10000) / (half - 1)))
+        pos = torch.arange(N, device=device).float()
         emb = torch.cat([torch.sin(pos[:, None] * omega[None, :]),
                           torch.cos(pos[:, None] * omega[None, :])], dim=-1)
         return self.net(emb).unsqueeze(0)
@@ -468,7 +503,7 @@ class MaskedMiniPointNet(nn.Module):
 
     def __init__(self, channels: int, feature_dim: int,
                  hidden1: int = 128, hidden2: int = 256,
-                 equivariant: bool = False):
+                 equivariant: bool = False, pos_enc_style: str = "mlp"):
         super().__init__()
         self.first_conv = nn.Sequential(
             nn.Conv1d(channels, hidden1, 1, bias=False), MaskedBatchNorm1d(hidden1),
@@ -480,7 +515,7 @@ class MaskedMiniPointNet(nn.Module):
         )
         self.equivariant = equivariant
         if equivariant:
-            self.pos_enc = PointOrderEncoder(hidden2)
+            self.pos_enc = PointOrderEncoder(hidden2, style=pos_enc_style)
 
     def forward(self, points: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         # points: (B, N, C) or (B, G, N, C); mask: (B, 1, N) or (B, G, 1, N)
