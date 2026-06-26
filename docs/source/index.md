@@ -63,26 +63,6 @@ node, or across many HPC nodes.
   docstrings, with a page per registry (models, datasets, transforms, hooks,
   losses, trainers).
 
-## Why pimm
-
-**Reproducible by construction.** Every run snapshots `pimm`, `scripts`, and
-`tools` into its experiment directory and trains from that copy. The resolved
-config, model config, and a git-stamped `run_metadata.json` are written
-alongside the checkpoints.
-
-**Exact resume, any world size.** RNG, dataloader position, global step,
-samples-seen, and optimizer/scheduler state are all checkpointed. Resume
-mid-epoch — even on a *different* number of GPUs — and continue bitwise where you
-left off.
-
-**Configs are Python.** No bespoke DSL. Configs are real Python with `_base_`
-inheritance, list comprehensions for layer-wise LRs, and dotted CLI overrides
-for quick probes.
-
-**Built for detectors.** Variable-length detector events are first-class: packed
-`(N, C)` tensors with an `offset` vector, energy-aware transforms, and
-motif/PID/instance labels — no padding, no fixed point counts.
-
 ## Integrated works
 
 - **Backbones** — [PTv3](https://arxiv.org/abs/2312.10035),
