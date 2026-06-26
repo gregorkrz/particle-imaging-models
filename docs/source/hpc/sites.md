@@ -198,7 +198,7 @@ full variable list is in {doc}`../reference/environment`.
 
 * - Variable
   - Purpose
-* - `PILARNET_DATA_ROOT_V1` / `_V2` / `_V3`
+* - `PILARNET_DATA_ROOT_V1` / `_V2`
   - PILArNet-M data roots per revision (dataset falls back to
     `~/.cache/pimm/pilarnet/<revision>`)
 * - `MODEL_DIR`

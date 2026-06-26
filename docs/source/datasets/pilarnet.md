@@ -50,7 +50,6 @@ DataLoader worker fork. The root is resolved in this order:
 2. The environment variable matching the revision:
    - `PILARNET_DATA_ROOT_V1`
    - `PILARNET_DATA_ROOT_V2`
-   - `PILARNET_DATA_ROOT_V3`
 3. The fallback `~/.cache/pimm/pilarnet/{revision}` if that directory exists.
 
 :::{important}

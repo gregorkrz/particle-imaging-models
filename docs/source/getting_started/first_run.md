@@ -26,21 +26,6 @@ on a few events.
 pimm launch --help
 ```
 
-**What you should see.** A Tyro-generated help screen with nested, dotted flags
-grouped into sections (`options`, `paths`, `resources`, `slurm`, `run`,
-`train`, …):
-
-```text
-usage: pimm launch [-h] [OPTIONS]
-  --dry-run, --no-dry-run            (default: False)
-  --resources.nproc-per-node INT     (default: 1)
-  --run.name {None}|STR              (default: None)
-  --run.timestamp, --run.no-timestamp
-  --train.config STR
-  --train.weight {None}|STR
-  ...
-```
-
 These are the knobs you'll use below. There are no flat `--config` / `--set`
 flags — everything is dotted (`--train.config`, `--resources.nproc-per-node`).
 {doc}`../reference/cli` documents the full surface.
@@ -205,7 +190,7 @@ python scripts/download_pilarnet.py --version v1 --output-dir /path/to/pilarnet
 export PILARNET_DATA_ROOT_V1=/path/to/pilarnet/v1
 ```
 
-`PILArNetH5Dataset` reads `PILARNET_DATA_ROOT_V1` / `_V2` / `_V3` (and falls back
+`PILArNetH5Dataset` reads `PILARNET_DATA_ROOT_V1` / `_V2` / (and falls back
 to `~/.cache/pimm/pilarnet/<revision>`). See {doc}`../datasets/pilarnet`.
 :::
 

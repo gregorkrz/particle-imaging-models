@@ -57,11 +57,8 @@ node, or across many HPC nodes.
   evaluators, checkpoint savers) and how to write your own.
 - {doc}`Evaluation <evaluation/index>` — in-loop evaluators, probe suites for
   SSL, and final testing with `test.sh`.
-- {doc}`Tutorials <tutorials/index>` — bring your own dataset and train PTv3 for
-  semantic segmentation, then graduate to the Panda panoptic detector.
-- {doc}`API reference <api/index>` — autodoc generated from the source
-  docstrings, with a page per registry (models, datasets, transforms, hooks,
-  losses, trainers).
+- {doc}`Tutorials <tutorials/index>` 
+- {doc}`API reference <api/index>`
 
 ## Integrated works
 
@@ -82,8 +79,6 @@ Start with **{doc}`getting_started/installation`**, then the
 codebase? Skim **{doc}`getting_started/concepts`** for what pimm does
 differently.
 :::
-
-## Citation
 
 ```{toctree}
 :hidden:

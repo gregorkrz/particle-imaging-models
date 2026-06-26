@@ -5,7 +5,7 @@ models. For the conceptual material, start at {doc}`../getting_started/concepts`
 for how configs are written, see {doc}`../configuration/index`.
 
 - {doc}`CLI reference <cli>` — `pimm launch`, `pimm submit`, and `pimm export`;
-  the Tyro flag table; config-path normalization; post-`--` training overrides;
+  common flags; config-path normalization; post-`--` training overrides;
   and the direct `scripts/train.sh` / `scripts/test.sh` flags.
 - {doc}`Model zoo <model_zoo>` — backbones, pretraining methods, and
   segmentation/detection heads, each with its registry `type` name, task, and

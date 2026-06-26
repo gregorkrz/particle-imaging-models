@@ -2,31 +2,21 @@
 
 pimm has two layers with different dependency needs:
 
-- The **CLI / launcher** (`pimm launch`, `pimm submit`, `pimm export`) is pure
-  Python and light — it only needs `tyro`, `submitit`, `PyYAML`, and friends.
-  Every login or submit host where you type a `pimm` command needs this.
-- The **training stack** (PyTorch, CUDA, spconv, FlashAttention, the local CUDA
-  extensions) is heavy and is what actually runs on the GPU nodes. It is pinned
-  by `environment.yml` and the Dockerfiles, **not** by `pyproject.toml`.
-
-:::{tip}
-For real training, use the container or the conda environment — the package
-metadata in `pyproject.toml` intentionally does *not* pull the GPU stack.
-:::
+- The **CLI / launcher**
+- The **full training stack** (PyTorch, CUDA, spconv, FlashAttention, the local CUDA
+  extensions) is heavy and is what actually runs on the GPU nodes. 
 
 :::{important}
 **Before you start — what the training stack needs:**
 
-- **Linux + an NVIDIA GPU (CUDA 12.4).** There is no CPU / macOS / Apple-Silicon
+- **Linux + an NVIDIA GPU (CUDA >12.4).** There is no CPU / macOS / Apple-Silicon
   training path — the sparse kernels (spconv, FlashAttention, the `libs/` CUDA
   extensions) require CUDA.
-- **Disk:** a few GB for the container or conda env, plus **~168 GB** for the full
-  PILArNet-M dataset (one revision is smaller — see {doc}`../datasets/pilarnet`).
 - **For the from-source build:** the CUDA toolkit (`nvcc`) and `ninja`; the local
   extension build is slow and GPU-arch-specific (`TORCH_CUDA_ARCH_LIST`).
 
 The pure-Python launcher (`pimm launch` / `submit` / `export`) is light and runs
-anywhere; only the GPU nodes need the full stack.
+anywhere. Only the GPU nodes need the full stack.
 :::
 
 ## Option A — Container (recommended)
@@ -35,13 +25,13 @@ Pre-built images live on Docker Hub:
 
 | Image | Description |
 |-------|-------------|
-| `youngsm/pimm:pytorch2.5.0-cuda12.4` | Standard image |
-| `youngsm/pimm-nersc:pytorch2.5.0-cuda12.4` | NERSC/Shifter variant with MPI-aware HDF5 + `mpi4py` |
+| `youngsm/pimm:main` | Standard image |
+| `youngsm/pimm-nersc:main` | NERSC/Shifter variant with MPI-aware HDF5 + `mpi4py` |
 
 ```bash
 git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
 cd particle-imaging-models
-apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
+apptainer pull /path/to/pimm.sif docker://youngsm/pimm:main
 ```
 
 The image installs `pimm` as an editable package at `/opt/pimm/src`. **Bind your
@@ -161,7 +151,7 @@ cp example.env .env
 
 | Variable | Purpose |
 |----------|---------|
-| `PILARNET_DATA_ROOT_V1`, `_V2`, `_V3` | PILArNet-M data roots per revision |
+| `PILARNET_DATA_ROOT_V1`, `_V2` | PILArNet-M data roots per revision |
 | `MODEL_DIR` | Redirect (large) checkpoints to another filesystem; the experiment `model/` becomes a symlink |
 | `WANDB_API_KEY` | Alternative to `wandb login` |
 

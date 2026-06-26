@@ -9,7 +9,7 @@ shell variables win), and {doc}`site profiles <../hpc/sites>` inject their own
 
 | Variable | Purpose |
 |----------|---------|
-| `PILARNET_DATA_ROOT_V1` / `_V2` / `_V3` | PILArNet-M data root per revision. `PILArNetH5Dataset` falls back to `~/.cache/pimm/pilarnet/<revision>` when unset. See {doc}`../datasets/pilarnet`. |
+| `PILARNET_DATA_ROOT_V1` / `_V2` | PILArNet-M data root per revision. `PILArNetH5Dataset` falls back to `~/.cache/pimm/pilarnet/<revision>` when unset. See {doc}`../datasets/pilarnet`. |
 
 ## Checkpoints & logging
 
