@@ -14,6 +14,21 @@ For real training, use the container or the conda environment — the package
 metadata in `pyproject.toml` intentionally does *not* pull the GPU stack.
 :::
 
+:::{important}
+**Before you start — what the training stack needs:**
+
+- **Linux + an NVIDIA GPU (CUDA 12.4).** There is no CPU / macOS / Apple-Silicon
+  training path — the sparse kernels (spconv, FlashAttention, the `libs/` CUDA
+  extensions) require CUDA.
+- **Disk:** a few GB for the container or conda env, plus **~168 GB** for the full
+  PILArNet-M dataset (one revision is smaller — see {doc}`../datasets/pilarnet`).
+- **For the from-source build:** the CUDA toolkit (`nvcc`) and `ninja`; the local
+  extension build is slow and GPU-arch-specific (`TORCH_CUDA_ARCH_LIST`).
+
+The pure-Python launcher (`pimm launch` / `submit` / `export`) is light and runs
+anywhere; only the GPU nodes need the full stack.
+:::
+
 ## Option A — Container (recommended)
 
 Pre-built images live on Docker Hub:
@@ -113,8 +128,10 @@ pimm launch --help
 
 ## Verify the install
 
-A fast, light first run that builds the model, dataloader, and trainer
-and runs a couple of steps on tiny synthetic limits:
+A fast, light first run that builds the model, dataloader, and trainer and runs a
+couple of steps. The `max_len` flags **cap** how many events are used to keep the
+run short — they do *not* remove the data requirement. This command needs
+**PILArNet-M (v1) on disk and an NVIDIA GPU**:
 
 ```bash
 pimm launch \
@@ -124,6 +141,14 @@ pimm launch \
 ```
 
 If this runs an epoch and writes an `exp/.../` directory, your install is good.
+
+:::{note}
+**Prerequisites.** No data yet? Fetch a revision first with `python
+scripts/download_pilarnet.py --version v1` (see {doc}`../datasets/pilarnet`). No
+GPU on this machine? The run starts but `torchrun` exits with `RuntimeError: no
+CUDA devices available` — run it on a GPU node (see {doc}`../hpc/index`). There is
+currently no data-free or CPU-only smoke test.
+:::
 
 ## Environment variables
 
@@ -141,7 +166,8 @@ cp example.env .env
 | `WANDB_API_KEY` | Alternative to `wandb login` |
 
 `PILArNetH5Dataset` also falls back to `~/.cache/pimm/pilarnet/<revision>` when
-no data-root variable is set. See {doc}`../datasets/pilarnet` for downloading.
+no data-root variable is set. See {doc}`../datasets/pilarnet` for downloading, and
+{doc}`../reference/environment` for the full variable list.
 
 ## Troubleshooting
 

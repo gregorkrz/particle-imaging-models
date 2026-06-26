@@ -7,7 +7,7 @@ regardless of how many devices you used. Checkpoints are atomic, capture the
 
 - {doc}`Saving <hooks>` — saver hooks, cadence, best-metric snapshots.
 - {doc}`Export <export>` — `pimm export`, `save_pretrained`, portable weights.
-- {doc}`Hugging Face <huggingface>` — auto-push during training, `hf://` warm-start.
+- {doc}`Hugging Face <huggingface>` — auto-push during training, `hf://` fine-tune.
 - {doc}`Across world sizes <resume_world_size>` — reshard, or the legacy escape hatch.
 
 ## What's in a checkpoint

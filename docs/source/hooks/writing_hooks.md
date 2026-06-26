@@ -171,12 +171,12 @@ it would not be fine for anything load-bearing.
 - Don't register a hook only via a config `__import__`; it dies on resume.
 - Don't run collective saves/gathers under an `is_main_process()` guard — that
   deadlocks the other ranks.
-- Don't `cp` a warm-start file into a live run's `model/last/`; the next atomic
+- Don't `cp` a fine-tune checkpoint into a live run's `model/last/`; the next atomic
   save wipes extra files there.
 
 ## Next
 
 - {doc}`logging` and {doc}`diagnostics` — patterns to copy from the built-in
   hooks.
-- {doc}`../checkpoints/hooks` — savers, loaders, and warm-start remapping.
+- {doc}`../checkpoints/hooks` — savers, loaders, and fine-tune remapping.
 - {doc}`../evaluation/index` — writing an evaluator that drives `model_best`.

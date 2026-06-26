@@ -10,6 +10,8 @@ for how configs are written, see {doc}`../configuration/index`.
 - {doc}`Model zoo <model_zoo>` — backbones, pretraining methods, and
   segmentation/detection heads, each with its registry `type` name, task, and
   paper link, plus the `vXmY` versioning convention.
+- {doc}`Environment variables <environment>` — data roots, checkpoint/logging,
+  Hugging Face cache, distributed, and build variables, in one table.
 
 ## Other references
 
@@ -23,4 +25,5 @@ for how configs are written, see {doc}`../configuration/index`.
 
 cli
 model_zoo
+environment
 ```

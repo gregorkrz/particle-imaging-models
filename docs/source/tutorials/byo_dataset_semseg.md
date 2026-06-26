@@ -144,7 +144,7 @@ print("energy pct", np.percentile(ev["energy"], [1, 50, 99]))
 
 ## 3. Write the config
 
-Copy `configs/panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft.py`
+Copy `configs/panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft.py`
 as a starting point and change the dataset + transforms. The model side
 ({py:class}`~pimm.models.default.DefaultSegmentorV2` wrapping a `PT-v3m2` backbone) stays largely the same.
 
@@ -324,7 +324,7 @@ To run inference in your own script, load with {py:func}`~pimm.from_pretrained` 
 the **val** transform — see {doc}`../models/index` and
 {doc}`../models/dataset_format`.
 
-## 8. (Optional) Warm-start from a pretrained backbone
+## 8. (Optional) Fine-tune from a pretrained backbone
 
 Self-supervised pretraining usually buys a large head start. If you have a
 Sonata/Panda backbone checkpoint, load its weights into your backbone and remap
@@ -341,7 +341,7 @@ dict(
 
 ```bash
 pimm launch --train.config mytpc/semseg-ptv3 --run.name semseg-ptv3-pt \
-  --train.weight hf://youngsm/sonata-pilarnet-L/model_best.pth
+  --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
 
 Because `--train.resume` is **not** set, only weights load — optimizer and

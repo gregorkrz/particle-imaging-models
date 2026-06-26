@@ -32,6 +32,71 @@ pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmas
 `pimm launch` **errors if the resolved site is non-local** — use `pimm submit`
 for Slurm sites.
 
+## Add your own site (start from `slurm`)
+
+For a generic Slurm cluster, build from the **`slurm`** base — not `s3df` /
+`nersc`, which are SLAC/NERSC-specific. Drop a `launch/sites/<name>.yaml` that
+inherits it (`--site <name>` resolves to `launch/sites/<name>.yaml`):
+
+```yaml
+# launch/sites/mycluster.yaml
+_base_: slurm.yaml                 # generic Slurm defaults
+
+site: mycluster
+
+paths:
+  repo_root: /home/me/particle-imaging-models   # shared checkout jobs run from
+  exp_root: "{repo_root}/exp"                    # where runs are written
+
+resources:
+  nnodes: 1
+  nproc_per_node: 4                 # GPUs per node
+  cpus_per_proc: 12                 # CPUs per GPU
+  time: "12:00:00"
+
+slurm:
+  account: my_account
+  partition: gpu
+  gpu_directive: gres               # `--gres=gpu:N`; some clusters need `gpus-per-node`
+
+container:
+  runtime: none                     # or `singularity` with an `image:` (see below)
+
+env:
+  PILARNET_DATA_ROOT_V1: /data/pilarnet/v1      # cluster-wide data roots
+```
+
+```bash
+pimm submit --site mycluster --train.config <config> \
+  --resources.nnodes 1 --resources.nproc-per-node 4 --dry-run
+```
+
+The keys a site profile understands:
+
+```{list-table}
+:header-rows: 1
+:widths: 20 80
+
+* - Section
+  - Keys
+* - `paths`
+  - `repo_root` (checkout jobs run from), `exp_root` (run outputs; default `{repo_root}/exp`)
+* - `resources`
+  - `nnodes`, `nproc_per_node` (GPUs/node), `cpus_per_proc` (CPUs/GPU), `time`, `mem`
+* - `slurm`
+  - `account`, `partition`, `qos`, `constraint`, `gpu_directive` (`gres` or `gpus-per-node`), `output`
+* - `container`
+  - `runtime` (`none` / `singularity` / `shifter`), `image`, `binds`, `repo_mount`, `setup`
+* - `submit`
+  - `host` (optional remote login host to submit from), `setup` (commands run before submission)
+* - `env`
+  - environment variables injected into the job (data roots, NCCL knobs, …)
+```
+
+Always `--dry-run` first to confirm the rendered account/partition/GRES before
+anything hits the queue. The `s3df` and `nersc` profiles below are concrete
+examples to crib from.
+
 ## `s3df` — SLAC S3DF
 
 ```bash
@@ -124,7 +189,8 @@ The job sets `OMP_NUM_THREADS` to the per-GPU value (`cpus_per_proc`).
 ## Environment variables
 
 `scripts/train.sh` / `test.sh` source a repo-root `.env` if present (existing
-shell variables take priority). Site YAML also injects env vars into the job.
+shell variables take priority). Site YAML also injects env vars into the job. The
+full variable list is in {doc}`../reference/environment`.
 
 ```{list-table}
 :header-rows: 1

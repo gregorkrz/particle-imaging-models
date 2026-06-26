@@ -13,7 +13,7 @@ just decide *when*. There are three, registered in
   - Role
 * - `CheckpointLoader`
   - Loads weights and (when `resume=True`) restores full training state in
-    `before_train()`. Supports key remapping for warm-starts.
+    `before_train()`. Supports key remapping for fine-tuning.
 * - `CheckpointSaver`
   - Evaluator-aware saver. Writes on a configured save step or eval step and in
     `after_train()`; writes `model_best.pth` when the metric improves.
@@ -76,7 +76,7 @@ operation. Rank-0-only side artifacts (`model_best.pth`, `iter_<step>.pth`) are
 guarded internally.
 :::
 
-## Loading & warm-start remap
+## Loading & fine-tune remap
 
 `CheckpointLoader.__init__(keywords="", replacement=None, replacements=None,
 strict=False)`. When `cfg.resume=False` it loads model weights only; when

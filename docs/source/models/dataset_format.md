@@ -27,7 +27,7 @@ val_transform = cfg.data.val.transform   # the exact list of transform dicts use
 ```
 
 If you exported the model, the same information is in
-`training_config.json` under `["data"]`. **Reuse it** rather than re-deriving
+`config.json` under `["data"]`. **Reuse it** rather than re-deriving
 the magic numbers.
 
 ## Build a packed batch by hand
@@ -119,7 +119,7 @@ Then run inference exactly as in {doc}`index`.
 
 ## Checklist
 
-- Read the transform from the run's `config.py` / `training_config.json` — don't
+- Read the transform from the run's `config.py` / `config.json` — don't
   invent numbers.
 - Match `feat_keys` (and therefore `in_channels`) exactly.
 - Keep `grid_coord` if the model uses a sparse backbone.

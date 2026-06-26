@@ -52,6 +52,50 @@ After collation a supervised semantic-segmentation batch typically looks like:
 }
 ```
 
+The full contract — dtypes, and when each key is present:
+
+```{list-table}
+:header-rows: 1
+:widths: 16 20 14 50
+
+* - Key
+  - Shape
+  - Dtype
+  - Present / notes
+* - `coord`
+  - `(N, D)`, D = 2 or 3
+  - `float32`
+  - **always** — point coordinates after the transform pipeline
+* - `feat`
+  - `(N, C)`
+  - `float32`
+  - **always** — concat of `Collect(feat_keys=...)`; `C` must equal the backbone's `in_channels`
+* - `offset`
+  - `(B,)`
+  - `int64`
+  - **always** — cumulative per-event point counts; `offset[-1] == N`
+* - `grid_coord`
+  - `(N, 3)`
+  - `int64`
+  - sparse backbones (PT-v3, SpUNet, Mink) — integer voxel indices from `GridSample(return_grid_coord=True)`
+* - `segment`
+  - `(N,)`
+  - `int64`
+  - supervised — per-point class id (`ignore_index` for unlabeled). Detector configs read a task-specific name (e.g. `segment_pid`)
+* - `instance`
+  - `(N,)`
+  - `int64`
+  - instance / panoptic — per-point instance id (task-specific name, e.g. `instance_particle`)
+* - `name`
+  - `(B,)` list
+  - `str`
+  - **always** — per-event identifiers (a `list`, not a tensor)
+```
+
+Dtypes follow {py:class}`~pimm.datasets.transform.base.ToTensor` (integer arrays → `int64`,
+floating → `float32`); `Collect` casts `feat` to float and records `offset` as
+`int64`.
+
 Note what is *and is not* batched:
 
 - **Point-aligned tensors** (`coord`, `feat`, `segment`, `instance`, ...) are

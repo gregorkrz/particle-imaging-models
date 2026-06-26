@@ -8,7 +8,7 @@ sd_hide_title: true
 
 # Particle Imaging Models
 
-[Foundation-model research for neutrino & particle-imaging detectors, built on [Pointcept](https://github.com/Pointcept/Pointcept).]{.pimm-tagline}
+[Foundation-model research for neutrino & particle-imaging detectors.]{.pimm-tagline}
 
 ```{button-ref} getting_started/installation
 :ref-type: myst
@@ -48,7 +48,7 @@ node, or across many HPC nodes.
   format for every parallelism. Save-cadence hooks, manual export, and automatic
   Hugging Face upload.
 - {doc}`Using trained models <models/index>` — load any export with
-  `pimm.from_pretrained`, warm-start a fine-tune from the Hub, and reproduce the
+  `pimm.from_pretrained`, fine-tune from the Hub, and reproduce the
   exact dataset format a model expects.
 - {doc}`Datasets & transforms <datasets/index>` — the packed point-cloud
   contract, PILArNet-M, multimodal LArTPC/Water-Cherenkov readers, transform
@@ -83,20 +83,22 @@ codebase? Skim **{doc}`getting_started/concepts`** for what pimm does
 differently.
 :::
 
+## Citation
+
 ```{toctree}
 :hidden:
 :maxdepth: 2
 
 Getting started <getting_started/index>
-Distributed training <distributed/index>
+Datasets <datasets/index>
+Trained models <models/index>
+Tutorials <tutorials/index>
 Configuration <configuration/index>
 Hooks <hooks/index>
 Checkpoints <checkpoints/index>
 Evaluation <evaluation/index>
+Distributed training <distributed/index>
 HPC <hpc/index>
-Datasets <datasets/index>
-Trained models <models/index>
-Tutorials <tutorials/index>
 Reference <reference/index>
 API reference <api/index>
 ```

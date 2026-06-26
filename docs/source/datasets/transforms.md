@@ -173,6 +173,49 @@ Keys starting with `_` are **skipped by collation**. Use them for per-sample
 debugging metadata you do not want in the batched tensors. Anything you `Collect`
 without a leading underscore must be a collatable tensor, string, or sequence.
 
+## Transform catalog
+
+Every transform registered in `TRANSFORMS` — drop any of them into a `transform`
+list by `type`. Full constructor signatures are in the
+{doc}`API reference <../api/index>`.
+
+```{list-table}
+:header-rows: 1
+:widths: 26 74
+
+* - Group
+  - Transforms
+* - **Projection & utility**
+  - `Collect`, `Copy`, `ToTensor`, `Update`
+* - **Coordinate geometry**
+  - `NormalizeCoord`, `CenterShift`, `PositiveShift`, `PointClip`, `RandomRotate`,
+    `RandomRotateTargetAngle`, `RandomFlip`, `RandomScale`, `RandomShift`,
+    `RandomJitter`, `ClipGaussianJitter`, `MultiplicativeRandomJitter`,
+    `ElasticDistortion`
+* - **Sampling & cropping**
+  - `GridSample`, `SphereCrop`, `CropBoundary`, `HardExampleCrop`, `RandomDrop`,
+    `RandomDropout`, `ShufflePoint`
+* - **Features / energy / color**
+  - `LogTransform`, `MomentumTransform`, `RelativeLogNormalize`, `EnergyJitter`,
+    `EnergeticTranslation`, `NormalizeColor`, `ChromaticAutoContrast`,
+    `ChromaticJitter`, `ChromaticTranslation`, `HueSaturationTranslation`,
+    `RandomColorDrop`, `RandomColorGrayScale`, `RandomColorJitter`
+* - **Labels & instances**
+  - `PDGToSemantic`, `InstanceParser`, `ComputeAnchors`, `LocalCovarianceFeatures`
+* - **Multi-view & SSL**
+  - `MultiViewGenerator`, `ContrastiveViewsGenerator`,
+    `MixedScaleGeometryMultiViewGenerator`, `HierarchicalMaskGenerator`,
+    `HMAECollate`
+* - **Control flow**
+  - `ConditionalRandomTransform`, `SetRandomValue`
+```
+
+:::{tip}
+`PDGToSemantic` carries the `pid_6cls` PDG→class map used by the Panda detector
+(`{22:0, 11:1, 13:2, 211:3, 2212:4}`, everything else → `5` / "led"); see
+{doc}`../models/dataset_format`.
+:::
+
 ## See also
 
 - {doc}`packed_format` — what `Collect` + collation produce.

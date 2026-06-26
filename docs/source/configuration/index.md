@@ -305,7 +305,7 @@ Section conventions:
 
 `param_dicts` is just a list, so you can build it with ordinary Python. This
 real example (from
-`configs/panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft.py`) decays
+`configs/panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft.py`) decays
 each encoder block's LR toward the earliest, finest stages, leaves the random
 head on the fast head LR, and threads the resulting LRs into the scheduler:
 
@@ -337,7 +337,7 @@ scheduler = dict(
 Note the `del enc_depths`: a local name that should not become a config key can
 simply be deleted before the module finishes loading.
 
-### Warm-starting a backbone
+### Fine-tuning a backbone
 
 Fine-tuning configs commonly remap checkpoint keys with a {py:class}`~pimm.engines.hooks.checkpoint.CheckpointLoader` hook
 so a pretrained encoder lands under the right submodule:
@@ -493,4 +493,4 @@ pimm launch --dry-run --train.config panda/pretrain/pretrain-sonata-v1m1-pilarne
 - {doc}`../getting_started/concepts` — registries, the packed batch, the trainer
   contract.
 - {doc}`../hooks/index` — the hooks you wire up in the `hooks` list.
-- {doc}`../checkpoints/index` — what warm-start and resume consume.
+- {doc}`../checkpoints/index` — what fine-tuning and resume consume.

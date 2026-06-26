@@ -2,8 +2,8 @@
 
 Training checkpoints carry optimizer/RNG/dataloader state for resume. For
 *sharing* a model — fine-tuning elsewhere, uploading to the Hub, or shipping for
-inference — you want a **portable, config-free artifact** of bare weights. That's
-what export produces.
+inference — you want a **portable, self-contained artifact**: the model weights
+plus the config needed to rebuild them. That's what export produces.
 
 ## `pimm export` (CLI)
 
@@ -19,21 +19,21 @@ and can take a direct checkpoint path instead of `--run-dir` + name. See
 
 ## What an export contains
 
-Exports are **bare weights** — there is no `config.json` manifest,
-`model_config.json`, or `pimm_config.py`:
+An export is the model weights plus a small `config.json` — no optimizer, RNG, or
+dataloader state, and no `model_config.json` or `pimm_config.py`:
 
 ```text
 artifacts/my-model/
   model.safetensors      # or model.bin with safe_serialization=False
-  training_config.json   # the resolved training config (makes from_pretrained free)
+  config.json            # the resolved training config (makes from_pretrained free)
   README.md              # only when a model_card is supplied
 ```
 
-`training_config.json` is the resolved training config; its `["model"]` section
+`config.json` is the resolved training config; its `["model"]` section
 is what lets `pimm.from_pretrained("artifacts/my-model")` rebuild the
 architecture before loading weights. The architecture is always supplied on the
-*loading* side — a fine-tune config for warm-start, or
-`model_config`/`config_path`/`training_config.json` for {py:func}`~pimm.from_pretrained`.
+*loading* side — a fine-tune config, or
+`model_config`/`config_path`/`config.json` for {py:func}`~pimm.from_pretrained`.
 
 ## `save_pretrained` (Python)
 
@@ -44,7 +44,7 @@ save_pretrained(
     model,                                   # nn.Module, state-dict, or checkpoint path
     "exports/my-model",
     model_config=dict(type="my-model-v1", hidden_dim=256),
-    training_config=cfg,                     # provenance → training_config.json
+    training_config=cfg,                     # provenance → config.json
     safe_serialization=True,                 # safetensors
 )
 ```
@@ -73,7 +73,7 @@ model, meta = pimm.from_pretrained("exports/my-model", return_metadata=True)
 
 ## Low-level helpers
 
-For partial warm-starts (loading only a submodule, or remapping keys), the
+For partial loads (loading only a submodule, or remapping keys), the
 helpers in `pimm.export` are more surgical than a full reload:
 
 ```python
