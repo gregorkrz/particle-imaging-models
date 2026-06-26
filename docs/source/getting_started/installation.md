@@ -6,19 +6,6 @@ pimm has two layers with different dependency needs:
 - The **full training stack** (PyTorch, CUDA, spconv, FlashAttention, the local CUDA
   extensions) is heavy and is what actually runs on the GPU nodes. 
 
-:::{important}
-**Before you start — what the training stack needs:**
-
-- **Linux + an NVIDIA GPU (CUDA >12.4).** There is no CPU / macOS / Apple-Silicon
-  training path — the sparse kernels (spconv, FlashAttention, the `libs/` CUDA
-  extensions) require CUDA.
-- **For the from-source build:** the CUDA toolkit (`nvcc`) and `ninja`; the local
-  extension build is slow and GPU-arch-specific (`TORCH_CUDA_ARCH_LIST`).
-
-The pure-Python launcher (`pimm launch` / `submit` / `export`) is light and runs
-anywhere. Only the GPU nodes need the full stack.
-:::
-
 ## Option A — Container (recommended)
 
 Pre-built images live on Docker Hub:
