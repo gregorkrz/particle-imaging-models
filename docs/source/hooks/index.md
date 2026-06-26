@@ -128,7 +128,7 @@ to it. It does **not** forward `modify_config`.
 - {doc}`Logging <logging>` — run naming, iteration timing, and scalar/console logging — `WandbNamer`, `IterationTimer`, `InformationWriter`, and the writer / storage / `comm_info` channels they use.
 - {doc}`Diagnostics <diagnostics>` — health monitors and runtime mutators — gradient norms, prototype usage, feature std, resources, parameter counts, plus weight-decay / dtype / annealing / profiling hooks.
 - {doc}`Evaluation <../evaluation/index>` — in-loop evaluators that write `current_metric_value`, SSL probe suites, and final held-out testing.
-- {doc}`Checkpointing <../checkpoints/hooks>` — `CheckpointLoader`, `CheckpointSaver`, `CheckpointSaverIteration` — when to save, warm-start remapping, and `model_best.pth` selection.
+- {doc}`Checkpointing <../checkpoints/hooks>` — `CheckpointLoader`, `CheckpointSaver`, `CheckpointSaverIteration` — when to save, fine-tune remapping, and `model_best.pth` selection.
 - {doc}`Hugging Face <../checkpoints/huggingface>` — the `PushToHub` hook for uploading exported weights to the Hub during training.
 - {doc}`Writing hooks <writing_hooks>` — subclass `HookBase`, register it, import it so resume survives, and add a resume contract for state the generic payload won't save.
 

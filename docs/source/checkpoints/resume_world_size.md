@@ -72,4 +72,4 @@ pimm launch --train.config <cfg> -- checkpoint_format=standard
 
 - {doc}`index` — the two checkpoint formats in full.
 - {doc}`../distributed/index` — why fixed global batch size makes this safe.
-- {doc}`../hpc/resuming` — the broader resume vs warm-start picture.
+- {doc}`../hpc/resuming` — the broader resume vs fine-tune picture.

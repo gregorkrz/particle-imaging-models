@@ -3,10 +3,11 @@
 Once a model is trained and {doc}`exported <../checkpoints/export>`, you load it
 for inference or fine-tuning with **one function**: {py:func}`~pimm.from_pretrained`. This
 page covers loading from every source, reproducing the exact input the model
-expects, and warm-starting a fine-tune.
+expects, and fine-tuning from a checkpoint.
 
 - **Load a model** — local dir, Hub repo, `hf://` URI, or raw checkpoint (see below).
 - {doc}`Feed it data <dataset_format>` — reproduce the exact transform + packed-batch format.
+- {doc}`Bring your own model <bring_your_own>` — register a new architecture on the pimm substrate.
 
 ## Load with `from_pretrained`
 
@@ -23,10 +24,10 @@ The argument may be a local exported directory, a Hugging Face Hub repo id, an
 The returned model is in **eval mode**.
 
 For an exported directory or repo, `from_pretrained` probes for the weights
-file, reads the model config from `training_config.json` (`["model"]`), imports
+file, reads the model config from `config.json` (`["model"]`), imports
 `pimm.models`, builds the architecture, loads the state dict, and returns the
 model. Config precedence is: explicit `model_config` > the export's
-`training_config.json` > `config_path` / run dir.
+`config.json` > `config_path` / run dir.
 
 :::{tip}
 **Config drift is tolerated.** Constructor kwargs that the current code no longer
@@ -62,15 +63,31 @@ model = pimm.from_pretrained("exports/my-model", num_classes=7)
 ## Running inference
 
 Build an input the way the dataloader would (see {doc}`dataset_format` — this is
-the part people get wrong), move it to the device, and call the model. Models
-accept the packed batch dict and return an output dict:
+the part people get wrong), move it to the device, and call the model. There is
+no `make_packed_batch` helper: reproduce the model's **val** transform with
+{py:class}`~pimm.datasets.transform.base.Compose` and collate the result with
+`collate_fn`. Models accept the packed batch dict and return an
+output dict:
 
 ```python
 import torch
+from pimm.datasets.transform import Compose
+from pimm.datasets.utils import collate_fn
 
 model = pimm.from_pretrained("exports/my-semseg-model", device="cuda")
 
-batch = make_packed_batch(event)          # {"coord","feat","offset",...} — see dataset_format
+# Same pipeline the config's val/test split uses (numbers here are PILArNet-M's).
+pipeline = Compose([
+    dict(type="NormalizeCoord", center=[384.0, 384.0, 384.0], scale=768.0 * 3**0.5 / 2),
+    dict(type="LogTransform", min_val=0.01, max_val=20.0),
+    dict(type="GridSample", grid_size=0.001, hash_type="fnv", mode="train",
+         return_grid_coord=True),
+    dict(type="ToTensor"),
+    dict(type="Collect", keys=("coord", "grid_coord"), feat_keys=("coord", "energy")),
+])
+
+# one raw event: coord (N, 3) float32, energy (N, 1) float32
+batch = collate_fn([pipeline({"coord": coord, "energy": energy})])
 batch = {k: v.cuda() if torch.is_tensor(v) else v for k, v in batch.items()}
 
 with torch.no_grad():
@@ -78,8 +95,9 @@ with torch.no_grad():
 
 # Conventional output keys (present depends on the model/task):
 logits = out.get("seg_logits", out.get("sem_logits"))   # semantic segmentation
+pred = logits.argmax(1)                                  # per-point class id
 # out["cls_logits"]                                       # classification
-# out["pred_masks"], out["pred_logits"]                   # detector / panoptic
+# out["pred_masks"], out["pred_logits"]                   # detector / panoptic (see the Panda tutorial)
 ```
 
 The output-key conventions (the same ones evaluators consume):
@@ -108,7 +126,7 @@ Some models expose extra methods — `predict`, `encode`, `forward_features`,
 not a global contract; check the model family you're loading.
 :::
 
-## Warm-start a fine-tune
+## Fine-tune from a checkpoint
 
 To start a *new training run* from pretrained weights, you don't use
 `from_pretrained` — you point the training config's `weight=` at the checkpoint
@@ -116,16 +134,24 @@ To start a *new training run* from pretrained weights, you don't use
 
 ```bash
 pimm submit --site s3df \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
-  --train.weight hf://youngsm/sonata-pilarnet-L/model_best.pth
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
+  --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
+
+:::{note}
+`hf://<your-org>/sonata-pilarnet-L/model_best.pth` is a placeholder for **your**
+Sonata SSL checkpoint (push one with the {doc}`../checkpoints/huggingface` hook) —
+its `student.backbone.*` keys are what the fine-tune configs' `CheckpointLoader`
+remap expects. Published task checkpoints for *inference* (loaded with
+`from_pretrained`) are on the Hub — see the {doc}`../reference/model_zoo`.
+:::
 
 When the checkpoint's keys don't line up with the fine-tune model, remap them
 with the {py:class}`~pimm.engines.hooks.checkpoint.CheckpointLoader` hook (`keywords` → `replacement`). Full mechanics —
 including the "a remap matching zero params raises" guard — are in
 {doc}`../hpc/resuming` and {doc}`../checkpoints/hooks`.
 
-### Partial / programmatic warm-start
+### Partial / programmatic loading
 
 To load only a submodule (e.g. just the backbone) into an already-built model,
 use the lower-level helper:
@@ -164,5 +190,6 @@ tuples. See {doc}`../getting_started/concepts`.
 ```{toctree}
 :hidden:
 
+bring_your_own
 dataset_format
 ```

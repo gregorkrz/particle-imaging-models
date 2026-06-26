@@ -12,6 +12,55 @@ this page. For how `type` strings are resolved, see
 {doc}`../getting_started/concepts`.
 :::
 
+## Pretrained checkpoints
+
+Published Panda checkpoints live on the Hugging Face Hub as **consolidated
+exports** (`model.safetensors` + `config.json`), so the architecture
+travels with the weights — {py:func}`~pimm.from_pretrained` rebuilds the model with no
+config needed.
+
+```{list-table}
+:header-rows: 1
+:widths: 34 42 24
+
+* - Repo
+  - Task
+  - `model.type`
+* - [`deeplearnphysics/panda-base`](https://huggingface.co/deeplearnphysics/panda-base)
+  - Pretrained PT-v3m2 encoder — fine-tune downstream tasks from this
+  - `PT-v3m2`
+* - [`deeplearnphysics/panda-semantic`](https://huggingface.co/deeplearnphysics/panda-semantic)
+  - Semantic segmentation — 5 classes (shower, track, michel, delta, led)
+  - `DefaultSegmentorV2`
+* - [`deeplearnphysics/panda-particle`](https://huggingface.co/deeplearnphysics/panda-particle)
+  - Panoptic **particle ID** — 6 classes (photon, electron, muon, pion, proton, led)
+  - `detector-v4`
+* - [`deeplearnphysics/panda-interaction`](https://huggingface.co/deeplearnphysics/panda-interaction)
+  - Panoptic **interaction / vertex** grouping — 2 classes
+  - `detector-v4`
+```
+
+**Load a trained model for inference** — one call (see {doc}`../models/index` for
+building the input and reading the output; the Panda detectors also need
+`postprocess()`, shown in {doc}`../tutorials/panda_detector`):
+
+```python
+import pimm
+model = pimm.from_pretrained("deeplearnphysics/panda-semantic", device="cuda")
+```
+
+**Fine-tune a downstream task** — `panda-base` is the pretrained PT-v3m2 encoder
+to build on. The fine-tune recipe (copy a config, load the encoder via a
+`CheckpointLoader` remap, train) is in {doc}`../tutorials/byo_dataset_semseg` and
+{doc}`../tutorials/panda_detector`.
+
+:::{note}
+A bare `hf://<repo>` resolves to the repo's `model.safetensors`; the explicit form
+is `hf://<repo>/<file>`. A fine-tune config's `CheckpointLoader` rewrites a
+checkpoint's keys onto the model's `backbone.*` — the remap rule must match the
+checkpoint's key layout, so confirm the load reports no missing backbone keys.
+:::
+
 ## Versioning convention
 
 Models use **`vXmY`** naming: **version `X`, mode `Y`**. A new *version* marks a
@@ -65,8 +114,8 @@ Backbones go under `model.backbone.type`; the segmentation/detection wrapper
 
 ## Pretraining
 
-Self-supervised methods that produce a backbone checkpoint to warm-start
-downstream tasks (see {doc}`../checkpoints/index` for warm-start mechanics).
+Self-supervised methods that produce a backbone checkpoint to fine-tune
+downstream tasks (see {doc}`../checkpoints/index` for fine-tune mechanics).
 
 ```{list-table}
 :header-rows: 1
@@ -118,10 +167,9 @@ the Panda Detector and PointGroup emit instances / panoptic output.
   - Clustering-based instance segmentation.
   - [PointGroup](https://github.com/dvlab-research/PointGroup)
 * - Panda Detector
-  - `detector-v1m1`, `detector-v1m2`, `detector-v3` / `detector-v3m1`,
-    `detector-v3m2`, `detector-v3m3`, `detector-v4`
-  - Panoptic / instance detection (Mask2Former-style, low-energy aware);
-    optional PID, vertex, momentum heads.
+  - `detector-v4`
+  - Unified panoptic / instance detection (Mask2Former-style, low-energy aware);
+    per-query PID, with optional vertex / momentum / custom heads.
   - [arXiv:2512.01324](https://arxiv.org/abs/2512.01324)
 * - Default classifier
   - `DefaultClassifier`
@@ -138,7 +186,10 @@ dict (see {doc}`../configuration/index`).
 
 ## Config families
 
-Ready-made recipes live under `configs/`. The most useful families:
+Ready-made recipes live under `configs/`. **Not every `type` above ships a
+config** — entries without one (e.g. the `detector-v3*` variants and
+`DefaultSegmentorV3`) are building blocks you wire up in your own config. The
+families with runnable recipes:
 
 ```{list-table}
 :header-rows: 1
@@ -159,11 +210,38 @@ Ready-made recipes live under `configs/`. The most useful families:
 
 A config-path target for `--train.config` is one of these files with the
 `configs/` prefix and `.py` suffix optional, e.g.
-`panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft`.
+`panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft`.
+
+### Reading a config name
+
+Config filenames encode the recipe. Reading
+`panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft`:
+
+```{list-table}
+:header-rows: 1
+:widths: 26 74
+
+* - Token
+  - Meaning
+* - `pretrain` / `semseg` / `panseg`
+  - task: SSL pretraining / semantic segmentation / panoptic (detector)
+* - `pt-v3m2`
+  - backbone (`PT-v3m2`); `sonata`, `detector-v4`, etc. name the model
+* - `pilarnet`
+  - dataset (`PILArNetH5Dataset`)
+* - `ft`
+  - fine-tune: load a pretrained backbone (vs. training it cold)
+* - `5cls` / `pid` / `vtx`
+  - task variant: 5-class semseg / particle-ID / interaction-vertex
+* - `fft` / `dec` / `lin` / `scratch`
+  - regime: full fine-tune / decoder-only (frozen encoder) / linear probe (frozen backbone) / random-init baseline
+* - `smallmask`, `1m`, `amp`, `seed0`
+  - misc knobs (mask schedule, event count, AMP, seed)
+```
 
 ## See also
 
 - {doc}`../configuration/index` — wire a `type` into `model.type` and override it.
 - {doc}`cli` — launch a config family target with `pimm launch` / `pimm submit`.
 - {doc}`../datasets/index` — PILArNet-M and the packed input each model expects.
-- {doc}`../checkpoints/index` — warm-start a fine-tune from a pretrained backbone.
+- {doc}`../checkpoints/index` — fine-tune from a pretrained backbone.

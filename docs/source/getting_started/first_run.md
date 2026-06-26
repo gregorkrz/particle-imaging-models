@@ -11,7 +11,7 @@ uses one config — the 5-class PILArNet-M semantic segmentation fine-tune — s
 only learn one set of paths:
 
 ```text
-panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft
+panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft
 ```
 
 :::{tip}
@@ -53,7 +53,7 @@ Get in the habit of doing this before anything expensive.
 
 ```bash
 pimm launch \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --dry-run
 ```
 
@@ -63,8 +63,8 @@ auto-generated run name are all visible — nothing trains:
 
 ```text
 sh ./scripts/train.sh -m 1 -g 1 \
-  -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
-  -n semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft-<timestamp> ...
+  -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
+  -n semseg-pt-v3m2-pilarnet-ft-5cls-fft-<timestamp> ...
 ```
 
 ## 3. Train a real model (quickly)
@@ -76,7 +76,7 @@ install works.
 
 ```bash
 pimm launch \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --run.name first-run --run.no-timestamp \
   -- epoch=1 data.train.max_len=64 data.val.max_len=32 \
      batch_size=4 num_worker=0 use_wandb=False evaluate=False
@@ -109,7 +109,7 @@ CUDA / sparse backends / dataset path all work.
 No GPU on the machine where you typed this? The launcher will start but
 `torchrun` exits with `RuntimeError: no CUDA devices available`. Run it on a GPU
 node — locally, inside a Slurm allocation, or via {doc}`../hpc/index`. No
-PILArNet-M data yet? See step 7 to fetch some, or point `PILARNET_DATA_ROOT_V2`
+PILArNet-M data yet? See step 7 to fetch some, or point `PILARNET_DATA_ROOT_V1`
 at your copy (see {doc}`installation`).
 :::
 
@@ -140,7 +140,7 @@ run started with. With `use_wandb=False` you'll also see a TensorBoard
 
 ## 5. Export the model and load it back
 
-Turn the run's checkpoint into a portable, config-free artifact, then load it in
+Turn the run's checkpoint into a portable, self-contained artifact, then load it in
 Python — the path you'd use for inference or sharing.
 
 ```bash
@@ -148,7 +148,7 @@ pimm export --run-dir exp/panda/semseg/first-run last ./artifacts/first-run
 ```
 
 **What you should see.** `Exported pretrained model to: artifacts/first-run`, and
-the directory containing `model.safetensors` plus `training_config.json`.
+the directory containing `model.safetensors` plus `config.json`.
 
 Now load it back:
 
@@ -171,7 +171,7 @@ resources, account, and partition before anything hits the queue.
 ```bash
 pimm submit --dry-run --site s3df \
   --resources.nnodes 1 --resources.nproc-per-node 4 --resources.time 00:30:00 \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft
 ```
 
 **What you should see.** A single YAML manifest describing the job — resolved
@@ -183,7 +183,7 @@ account / partition / GRES from the `s3df` site profile and a pre-rendered
   slurm_gres: gpu:4
 attempts:
 - job_index: 1
-  run_name: semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft-<timestamp>
+  run_name: semseg-pt-v3m2-pilarnet-ft-5cls-fft-<timestamp>
   script: |
     ... singularity run ... sh /opt/pimm/src/scripts/train.sh -m 1 -g 4 -c ...
 ```
@@ -198,11 +198,11 @@ Slurm. Swap `--site s3df` for `--site nersc` to compare. Full details:
 
 :::{tab-item} Get real data
 The quick run above uses tiny limits. To train on real PILArNet-M data, download
-a revision and point the matching env var at it:
+the revision this config uses (**v1**) and point the matching env var at it:
 
 ```bash
-python scripts/download_pilarnet.py --version v2 --output-dir /path/to/pilarnet
-export PILARNET_DATA_ROOT_V2=/path/to/pilarnet/v2
+python scripts/download_pilarnet.py --version v1 --output-dir /path/to/pilarnet
+export PILARNET_DATA_ROOT_V1=/path/to/pilarnet/v1
 ```
 
 `PILArNetH5Dataset` reads `PILARNET_DATA_ROOT_V1` / `_V2` / `_V3` (and falls back
@@ -215,7 +215,7 @@ Rerun step 3 with W&B logging once you've authenticated:
 ```bash
 wandb login                      # or: export WANDB_MODE=offline
 pimm launch \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --run.name first-run-wandb \
   -- epoch=1 data.train.max_len=64 data.val.max_len=32 \
      batch_size=4 num_worker=0 use_wandb=True evaluate=False
@@ -225,14 +225,14 @@ Rank 0 streams metrics to W&B; with `use_wandb=False` (step 3) it writes
 TensorBoard events instead. See {doc}`../hooks/logging`.
 :::
 
-:::{tab-item} Preview a warm-start
-Fine-tuning configs can warm-start from a published checkpoint. Preview the
+:::{tab-item} Preview a fine-tune
+Fine-tuning configs can start from a pretrained checkpoint. Preview the
 rendered command — `--train.weight` accepts an `hf://` URI:
 
 ```bash
 pimm launch --dry-run \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
-  --train.weight hf://youngsm/sonata-pilarnet-L/model_best.pth
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
+  --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
 
 The rendered `scripts/train.sh` call gains a `-w hf://...` argument. See

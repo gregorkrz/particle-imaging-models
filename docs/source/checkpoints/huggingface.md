@@ -1,7 +1,7 @@
 # Hugging Face integration
 
 pimm can **push checkpoints to the Hub during or after training** and **load
-weights straight from the Hub** for warm-start or inference. This is the
+weights straight from the Hub** for fine-tuning or inference. This is the
 recommended way to move models across clusters that don't share a filesystem
 (e.g. pretrain on S3DF, fine-tune on NERSC).
 
@@ -14,7 +14,7 @@ reads are already written:
 hooks = [
     ...,
     dict(type="CheckpointSaver"),
-    dict(type="PushToHub", repo_id="youngsm/sonata-pilarnet-L", private=True),
+    dict(type="PushToHub", repo_id="<your-org>/sonata-pilarnet-L", private=True),
 ]
 ```
 
@@ -78,7 +78,7 @@ push_to_hub(
 
 If the first argument is already an export directory (contains a weights file),
 pimm uploads it as-is. Otherwise it runs {py:func}`~pimm.save_pretrained` into a temp/given
-directory and uploads the allowed files (weights, `training_config.json`,
+directory and uploads the allowed files (weights, `config.json`,
 `README.md`). Pass `private=` and an optional `revision`. Requires
 `huggingface_hub` and Hub authentication.
 
@@ -91,15 +91,19 @@ Two distinct entry points, depending on what you have on the Hub:
 
 ::::{tab-set}
 
-:::{tab-item} Warm-start a training run
+:::{tab-item} Fine-tune a training run
 A raw checkpoint pushed with `weights_only=True` loads via an `hf://` URI in your
 config's `weight=` (same scheme as a local path):
 
 ```bash
 pimm submit --site nersc \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
-  --train.weight hf://youngsm/sonata-pilarnet-L/model_best.pth
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
+  --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
+
+`<your-org>/...` is a placeholder for your own pushed Sonata checkpoint. Published
+task checkpoints (loaded with `from_pretrained` for inference) are on the Hub —
+see the {doc}`../reference/model_zoo`.
 :::
 
 :::{tab-item} Build a ready-to-use model

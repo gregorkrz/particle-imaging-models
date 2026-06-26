@@ -1,8 +1,10 @@
 # Quickstart
 
 This page gets you from a fresh checkout to a real run. It assumes you have
-{doc}`installed pimm <installation>` and have PILArNet-M data (or are happy to
-use tiny `max_len` limits for a quick check).
+{doc}`installed pimm <installation>`, have **PILArNet-M (v1) downloaded** (see
+{doc}`../datasets/pilarnet`), and have an NVIDIA GPU. The `max_len` limits below
+keep runs short but still read the dataset — they don't remove the data
+requirement.
 
 ## Build your run command
 
@@ -42,7 +44,7 @@ Tiny limits, no W&B, no workers — verifies the whole pipeline end to end:
 
 ```bash
 pimm launch \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --run.name smoke \
   -- epoch=1 data.train.max_len=64 data.val.max_len=32 \
      batch_size=4 num_worker=0 use_wandb=False
@@ -54,7 +56,7 @@ This writes everything under `exp/panda/semseg/smoke/`.
 
 ```bash
 pimm launch \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --run.name semseg-pt-v3m2 \
   --resources.nproc-per-node 1
 ```
@@ -63,7 +65,7 @@ Multi-GPU on one node needs no Slurm — `train.sh` uses `torchrun`:
 
 ```bash
 pimm launch \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --resources.nproc-per-node 4
 ```
 
@@ -82,7 +84,7 @@ dataclasses, so they are **nested and dotted**. There are no flat `--config` or
 | `--run.name` | Experiment name (default: `<config>-<timestamp>`) |
 | `--resources.nproc-per-node` | Torchrun processes (GPUs) per node |
 | `--resources.nnodes` | Number of nodes |
-| `--train.weight` | Path / `hf://` URI to a checkpoint to warm-start from |
+| `--train.weight` | Path / `hf://` URI to a checkpoint to fine-tune from |
 | `--train.resume` | Resume from the latest complete checkpoint |
 | `--train.no-code-copy` | Skip the code snapshot, run from repo source (dev mode) |
 | `--dry-run` | Render the command/script without executing |
@@ -189,7 +191,7 @@ instead. See {doc}`../hooks/logging`.
 ## Testing a trained run
 
 ```bash
-sh scripts/test.sh -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+sh scripts/test.sh -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   -n semseg-pt-v3m2 -w model_best
 ```
 

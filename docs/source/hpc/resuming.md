@@ -13,7 +13,7 @@ pimm distinguishes three things that are easy to conflate:
   - *Everything* — model, optimizer, scheduler, AMP scaler, RNG, dataloader
     position, step, samples-seen, best-metric
   - Continuing the *same* run (e.g. after a timeout)
-* - **Warm-start**
+* - **Fine-tune**
   - *Model weights only* (optionally remapped)
   - Starting a *new* run/task from a pretrained checkpoint
 * - **Reshard**
@@ -62,7 +62,7 @@ batch, so a checkpoint taken after a step resumes after that step — not before
 it, and not duplicating it.
 :::
 
-## Warm-start a new task from a checkpoint
+## Fine-tune a new task from a checkpoint
 
 This is the "same snapshot, new config/new task" path — e.g. you pretrained with
 Sonata and now want to fine-tune a segmentation head from those backbone
@@ -70,7 +70,7 @@ weights. Point `--train.weight` at a checkpoint **without** `--train.resume`:
 
 ```bash
 pimm submit --site s3df \
-  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --train.weight exp/panda/pretrain/sonata-run/model/model_best.pth
 ```
 
@@ -103,7 +103,7 @@ your `keywords` prefix is wrong. Judge a successful load by the loss curves of
 the *new* head (`loss_cls`/`dice`), not just the absence of errors.
 :::
 
-For partial / programmatic warm starts (loading only a submodule), use the
+For partial / programmatic loads (loading only a submodule), use the
 lower-level {py:func}`~pimm.export.load_pretrained` helper from `pimm.export` — see
 {doc}`../models/index`.
 
@@ -160,4 +160,4 @@ format to reshard, or set `resume_strict_state=False` for the legacy format.
 ## Next
 
 - {doc}`../checkpoints/index` — formats, atomicity, and the DCP layout.
-- {doc}`../models/index` — warm-start helpers and `hf://` weights.
+- {doc}`../models/index` — fine-tune helpers and `hf://` weights.

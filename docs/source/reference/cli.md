@@ -233,7 +233,7 @@ runs, and requeue chaining are covered in {doc}`../hpc/index`.
 
 ## `pimm export` — portable artifacts
 
-Export a training checkpoint to a portable, config-free pretrained directory for
+Export a training checkpoint to a portable, self-contained pretrained directory for
 fine-tuning or Hugging Face upload:
 
 ```bash
@@ -313,7 +313,7 @@ option; browse the `configs/` tree to find configs.
 
 ```bash
 sh scripts/train.sh -g 4 \
-  -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-enc-upcast-fft \
+  -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   -n semseg-smoke \
   -- --options epoch=10 data.train.max_len=1000
 ```

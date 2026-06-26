@@ -21,7 +21,7 @@ Top-level functions
 State-dict helpers
 ==================
 
-Lower-level helpers in :mod:`pimm.export` for partial warm-starts and key
+Lower-level helpers in :mod:`pimm.export` for partial loads and key
 remapping.
 
 .. currentmodule:: pimm.export

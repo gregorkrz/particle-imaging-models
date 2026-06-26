@@ -14,9 +14,9 @@ points ─▶ PT-v3m2 encoder (frozen, Sonata-pretrained) ─▶ point features
                                                               │
                           N learned queries ──cross-attn──────┤
                                   │                            │
-                   per-query: pred_masks, pred_logits (PID), pred_momentum
+                   per-query: pred_masks, pred_logits (PID)
                                   │
-                  FastInstanceSegmentationLoss (Hungarian match)
+                  FastUnifiedInstanceLoss (Hungarian match)
                                   │
                      InstanceSegmentationEvaluator (PQ / ARI)
 ```
@@ -38,28 +38,26 @@ points ─▶ PT-v3m2 encoder (frozen, Sonata-pretrained) ─▶ point features
   - `segment` **and** `instance` (per-point instance id)
 * - Loss
   - CE + Lovász
-  - `FastInstanceSegmentationLoss` (mask + dice + class, Hungarian-matched)
+  - `FastUnifiedInstanceLoss` (mask + dice + class, Hungarian-matched)
 * - Evaluator
   - `SemSegEvaluator` (mIoU)
   - `InstanceSegmentationEvaluator` (PQ-style, needs **val batch size 1**)
 * - Data revision
   - any
-  - PILArNet **v2/v3** (carries PID + instance + momentum)
+  - PILArNet **v2/v3** (per-point PID + instance ids)
 ```
 
 ## 1. Data: you need instance labels
 
-The detector supervises per-instance masks, so your dataset must emit a per-point
-`instance` id alongside the per-point class `segment`. With PILArNet-M v2/v3 this
-is a `Copy` in the transform; the dataset already provides `instance_particle`
-and `segment_pid`:
+The detector supervises per-instance masks, so your dataset must provide a
+per-point `instance` id alongside the per-point class. `detector-v4` reads them
+from the keys named in its `label_configs` (here `instance_particle` and
+`segment_pid`), which PILArNet-M v2 already provides — so you just `Collect` them
+(no `Copy` to rename):
 
 ```python
-dict(type="Copy", keys_dict={"instance_particle": "instance",
-                             "segment_pid": "segment"}),
-...
 dict(type="Collect",
-     keys=("coord", "grid_coord", "segment", "instance"),
+     keys=("coord", "grid_coord", "segment_pid", "instance_particle"),
      feat_keys=("coord", "energy")),
 ```
 
@@ -72,7 +70,7 @@ survive subsampling transforms. See {doc}`../datasets/bring_your_own`.
 
 ## 2. Start from the reference config
 
-Copy `configs/panda/panseg/detector-v1m1-pt-v3m2-ft-pid-dec.py`. It is the
+Copy `configs/panda/panseg/detector-v4-pt-v3m2-ft-pid-dec.py`. It is the
 "decoder-only" fine-tune: a **frozen, Sonata-pretrained** PTv3 encoder with a
 trainable detection decoder. The headline pieces:
 
@@ -87,7 +85,12 @@ amp_dtype = "bfloat16"
 epoch = 20
 
 model = dict(
-    type="detector-v1m1",
+    type="detector-v4",
+    labels=("particle",),
+    # which batch keys hold the instance ids and the per-point class:
+    label_configs=dict(
+        particle=dict(instance_key="instance_particle", segment_key="segment_pid"),
+    ),
     num_classes=6,                       # photon, electron, muon, pion, proton, led
     query_type="learned",
     num_queries=32,
@@ -97,20 +100,20 @@ model = dict(
     backbone=dict(
         type="PT-v3m2",
         in_channels=4,                   # xyz + energy
-        enc_mode=True,                   # encoder-only
+        enc_mode=True,
         freeze_encoder=True,             # <-- frozen; only the decoder trains
         enable_flash=True,
-        # ... (same enc/dec dims as the semseg backbone)
+        # ... (same backbone dims as the semseg config)
     ),
     full_in_channels=1232,
+    mlp_point_proj=True,
     hidden_channels=256, num_heads=16, depth=3,
     criteria=[
         dict(
-            type="FastInstanceSegmentationLoss",
+            type="FastUnifiedInstanceLoss",
             cost_mask=1.0, cost_dice=1.0, cost_class=1.0,
             loss_weight_focal=2.0, loss_weight_dice=5.0,
             cls_weight_matched=2.0, cls_weight_noobj=0.5,
-            momentum_loss_weight=1.0,
             focal_alpha=0.25, focal_gamma=2.0,
             num_points=100_000,
             truth_label="instance",
@@ -126,7 +129,7 @@ A few things worth understanding:
 - **Stuff vs things.** `stuff_classes=[5]` marks the low-energy-deposit class as
   "stuff" (segmented as a region, not counted as instances), the rest are
   "things" (counted instances) — standard panoptic terminology.
-- **The loss is set-based.** `FastInstanceSegmentationLoss` does Hungarian
+- **The loss is set-based.** `FastUnifiedInstanceLoss` does Hungarian
   matching between predicted and truth instances, then applies focal (class) +
   dice + mask costs; `truth_label="instance"` selects the supervision target.
 
@@ -147,7 +150,7 @@ scheduler = dict(type="OneCycleLR",
                  div_factor=10.0, final_div_factor=1000.0)
 ```
 
-## 3. Warm-start the encoder from Sonata
+## 3. Fine-tune the encoder from Sonata
 
 The whole point of the `-ft-...-dec` variant is to reuse a self-supervised
 backbone. The {py:class}`~pimm.engines.hooks.checkpoint.CheckpointLoader` hook loads pretrained weights and remaps the
@@ -166,9 +169,17 @@ Then point `--train.weight` at the pretrained checkpoint:
 
 ```bash
 pimm submit --site s3df \
-  --train.config panda/panseg/detector-v1m1-pt-v3m2-ft-pid-dec \
-  --train.weight hf://youngsm/sonata-pilarnet-L/model_best.pth
+  --train.config panda/panseg/detector-v4-pt-v3m2-ft-pid-dec \
+  --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
+
+:::{note}
+`hf://<your-org>/sonata-pilarnet-L/model_best.pth` is a placeholder for **your**
+Sonata SSL checkpoint — its `student.backbone.*` keys are what the
+`CheckpointLoader` remap below expects. Produce one with a `configs/panda/pretrain/`
+recipe, or run the `-scratch` variant. Released task detectors for *inference*
+(loaded with `from_pretrained`) are on the Hub — see the {doc}`../reference/model_zoo`.
+:::
 
 :::{important}
 A remap matching **zero** parameters raises — so a silent random-init can't
@@ -195,7 +206,7 @@ The config family encodes a common ablation; pick by filename suffix:
   - **full fine-tune** (encoder unfrozen)
   - best accuracy when you have the compute
 * - `-scratch`
-  - random init, no warm-start
+  - random init, no pretraining
   - the from-scratch baseline (a clean control with no SSL leakage)
 ```
 
@@ -234,15 +245,15 @@ test = dict(type="InstanceSegTester", stuff_classes=[5],
 
 ```bash
 # smoke
-pimm launch --train.config panda/panseg/detector-v1m1-pt-v3m2-ft-pid-dec \
+pimm launch --train.config panda/panseg/detector-v4-pt-v3m2-ft-pid-dec \
   --run.name det-smoke \
   -- epoch=1 data.train.max_len=64 data.val.max_len=16 \
      batch_size=4 num_worker=0 use_wandb=False
 
 # real run, 4 GPUs
-pimm launch --train.config panda/panseg/detector-v1m1-pt-v3m2-ft-pid-dec \
+pimm launch --train.config panda/panseg/detector-v4-pt-v3m2-ft-pid-dec \
   --resources.nproc-per-node 4 \
-  --train.weight hf://youngsm/sonata-pilarnet-L/model_best.pth
+  --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
 
 ## 6. On HPC with requeue chaining
@@ -252,28 +263,73 @@ that times out resumes from the latest complete checkpoint:
 
 ```bash
 pimm submit --site s3df --recipe launch/runs/ft_sphenix_panoptic_pid.yaml \
-  --train.config panda/panseg/detector-v1m1-pt-v3m2-ft-pid-dec \
+  --train.config panda/panseg/detector-v4-pt-v3m2-ft-pid-dec \
   --chain.jobs 4 --resources.time 02:00:00 \
   --run.name det-pid-chain
 ```
 
-Attempt 1 starts (warm-started); attempts 2+ resume automatically. See
+Attempt 1 starts (fine-tuned); attempts 2+ resume automatically. See
 {doc}`../hpc/chaining`. Always `--dry-run` first to confirm the rendered
 resources, account, and partition.
 
 ## 7. Inference
 
-Load the trained detector and feed it data in the **same** format (instance
-labels aren't needed at inference, but the coord/energy transform must match):
+Load the trained detector and turn raw events into **per-point** instances, PIDs,
+and scores. Instance labels aren't needed at inference, but the coord/energy
+transform must match training — and the detector needs `postprocess()` to turn
+per-query masks into per-point predictions. (`forward` alone returns raw query
+tensors, which is the step most people stop at by mistake.)
 
 ```python
-import pimm, torch
-model = pimm.from_pretrained("exports/panda-detector", device="cuda")
+import torch
+import pimm
+from pimm.datasets.transform import Compose
+from pimm.datasets.utils import collate_fn
+from pimm.models.utils.misc import offset2bincount
+
+# Load the released particle detector (or your own `pimm export` directory).
+model = pimm.from_pretrained("deeplearnphysics/panda-particle", device="cuda")
+
+# Same transform as the config's test split, but WITHOUT the label steps:
+# no `Copy`, and no segment/instance in `Collect`.
+pipeline = Compose([
+    dict(type="NormalizeCoord", center=[384.0, 384.0, 384.0], scale=768.0 * 3**0.5 / 2),
+    dict(type="LogTransform", min_val=0.01, max_val=20.0),
+    dict(type="GridSample", grid_size=0.001, hash_type="fnv", mode="train",
+         return_grid_coord=True),
+    dict(type="ToTensor"),
+    dict(type="Collect", keys=("coord", "grid_coord"), feat_keys=("coord", "energy")),
+])
+
+# one raw event: coord (N, 3) float32, energy (N, 1) float32
+batch = collate_fn([pipeline({"coord": coord, "energy": energy})])
+batch = {k: v.cuda() if torch.is_tensor(v) else v for k, v in batch.items()}
+
 with torch.no_grad():
-    out = model(batch, return_point=True)   # detectors expect return_point=True
-masks  = out["pred_masks"]       # per-query masks
-logits = out["pred_logits"]      # per-query class logits
+    out = model(batch, return_point=True)        # return_point=True is required
+point = out["point"]
+
+# Turn per-query masks/logits into per-point predictions — the same call the
+# InstanceSegmentationEvaluator makes internally.
+preds = model.postprocess({
+    "pred_masks":   out["pred_masks"],
+    "pred_logits":  out["pred_logits"],
+    "stuff_probs":  point.outputs.get("stuff_probs"),
+    "point_counts": offset2bincount(point.offset),
+}, stuff_threshold=0.5, mask_threshold=0.5)
+
+# All per-point, row-aligned to batch["coord"]:
+instance_id = preds["instance_labels"]   # int; -1 = stuff / uncovered
+pid_class   = preds["class_labels"]      # 0..5 → photon, electron, muon, pion, proton, led
+score       = preds["confidences"]       # per-point confidence
 ```
+
+:::{note}
+`deeplearnphysics/panda-particle` is the released particle detector (a
+`detector-v4` export); swap in your own `pimm export` directory to run a model you
+trained. `postprocess()` takes more knobs (`conf_threshold`, NMS, `min_points`, …)
+that otherwise default to the model's `postprocess_cfg`.
+:::
 
 See {doc}`../models/index` and {doc}`../models/dataset_format`.
 
@@ -282,14 +338,13 @@ See {doc}`../models/index` and {doc}`../models/dataset_format`.
 You've gone from per-point labels to per-instance masks + PID by:
 
 1. supplying `instance` labels in the dataset,
-2. swapping in the `detector-v1m1` model with `FastInstanceSegmentationLoss`,
-3. warm-starting a frozen Sonata encoder via a `CheckpointLoader` remap,
+2. swapping in the `detector-v4` model with `FastUnifiedInstanceLoss`,
+3. fine-tuning a frozen Sonata encoder via a `CheckpointLoader` remap,
 4. evaluating with `InstanceSegmentationEvaluator` at val batch size 1, and
 5. scaling out with requeue chaining.
 
 ## See also
 
 - {doc}`byo_dataset_semseg` — the foundation this builds on.
-- {doc}`../reference/model_zoo` — other detector variants (`detector-v1m2`,
-  `detector-v3*`, `detector-v4`).
+- {doc}`../reference/model_zoo` — the `detector-v4` model and its config variants.
 - {doc}`../evaluation/index` — panoptic metrics in depth.

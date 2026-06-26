@@ -193,7 +193,7 @@ a short diagnostic run and remove it from `cfg.hooks` for production training.
   - right-sizing jobs, hunting CPU/GPU memory leaks
 * - `ParameterCounter`
   - monitor
-  - confirming a freeze / LoRA / warm-start touched the right params
+  - confirming a freeze / LoRA / fine-tune touched the right params
 * - `WeightDecayExclusion`
   - mutator
   - excluding bias/norm/1-D params from weight decay
