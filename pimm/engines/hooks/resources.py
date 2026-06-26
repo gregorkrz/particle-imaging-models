@@ -13,6 +13,35 @@ from .default import HookBase
 
 @HOOKS.register_module()
 class GarbageHandler(HookBase):
+    """Control Python garbage collection (and CUDA cache) on a step cadence.
+
+    In ``before_train`` it optionally disables automatic garbage collection
+    (``disable_auto``) to avoid unpredictable GC pauses during training. It
+    resets a per-epoch counter in ``before_epoch`` and, in ``after_step``, runs
+    ``gc.collect()`` every ``interval`` steps (also emptying the CUDA cache when
+    ``empty_cache=True``). ``after_train`` performs a final collect and CUDA
+    cache empty. Registered as ``GarbageHandler``.
+
+    Args:
+        interval (int): Run a manual ``gc.collect()`` every this many steps.
+            Defaults to ``150``.
+        disable_auto (bool): Disable Python's automatic GC at train start so
+            collection happens only at the controlled interval. Defaults to
+            ``True``.
+        empty_cache (bool): Also call ``torch.cuda.empty_cache()`` at each
+            interval collect. Defaults to ``False``.
+
+    Example:
+        Add to ``cfg.hooks``; it takes over garbage collection so it happens on a
+        fixed cadence rather than unpredictably mid-step:
+
+        .. code-block:: python
+
+            hooks = [dict(type="GarbageHandler", interval=150)]
+            # → disables automatic GC in before_train and runs gc.collect() every
+            #   150 steps (also torch.cuda.empty_cache() when empty_cache=True);
+            #   final collect + cache empty in after_train
+    """
 
     def __init__(self, interval=150, disable_auto=True, empty_cache=False):
         self.interval = interval
@@ -42,21 +71,45 @@ class GarbageHandler(HookBase):
 
 @HOOKS.register_module()
 class ResourceUtilizationLogger(HookBase):
-    """
-    Hook to log GPU and CPU utilization metrics over time.
+    """Log GPU and CPU/RAM utilization to the writer over the course of training.
 
-    Logs GPU memory usage, GPU utilization %, CPU usage %, and system memory
-    to tensorboard/wandb for monitoring resource consumption during training.
+    In ``before_train`` it probes optional dependencies (``psutil`` for CPU/RAM,
+    ``pynvml`` for system-wide GPU stats), warning/falling back to
+    ``torch.cuda`` when unavailable. Runs in ``after_step`` every
+    ``log_frequency`` steps on rank 0: collects GPU memory (and, system-wide,
+    utilization %) plus CPU and system/process memory metrics and writes them to
+    the writer under ``{prefix}/...``. ``after_train`` shuts down NVML if it was
+    initialized. Registered as ``ResourceUtilizationLogger``.
 
     Args:
-        log_frequency (int): Log metrics every N steps (default: 10)
-        prefix (str): Prefix for logged metrics (default: "resources")
-        log_per_gpu (bool): Log metrics per GPU or just local GPU (default: False)
-        log_cpu (bool): Log CPU utilization (default: True)
-        log_system_memory (bool): Log system RAM usage (default: True)
-        per_process (bool): If True, report only this process's resource usage
-            instead of system-wide metrics. Recommended for shared nodes where
-            other jobs may be running. (default: True)
+        log_frequency (int): Log metrics every this many steps. Defaults to
+            ``10``.
+        prefix (str): Namespace prefix for the logged keys. Defaults to
+            ``"resources"``.
+        log_per_gpu (bool): In system-wide mode, log metrics for every visible
+            GPU instead of just the local one. Defaults to ``False``.
+        log_cpu (bool): Log CPU utilization metrics. Defaults to ``True``.
+        log_system_memory (bool): Log RAM usage metrics. Defaults to ``True``.
+        per_process (bool): If ``True``, report only this process's CPU/RAM and
+            ``torch.cuda`` GPU memory (recommended on shared nodes); if
+            ``False``, report system-wide metrics (using ``pynvml`` for GPU when
+            available). Defaults to ``True``.
+
+    Note:
+        Logs on rank 0 only and no-ops when ``trainer.writer`` is absent/``None``.
+        ``per_process=True`` ignores ``log_per_gpu``/``pynvml`` and uses
+        ``torch.cuda`` memory counters for this process.
+
+    Example:
+        Add to ``cfg.hooks``; every ``log_frequency`` steps (rank 0) it writes
+        GPU/CPU/RAM utilization to the writer:
+
+        .. code-block:: python
+
+            hooks = [dict(type="ResourceUtilizationLogger", log_frequency=50)]
+            # → every 50 steps writes "resources/gpu_memory_allocated_gb",
+            #   "resources/gpu_memory_reserved_gb", "resources/process_cpu_percent",
+            #   "resources/process_rss_gb", … to the writer (per-process by default)
     """
 
     def __init__(

@@ -1,0 +1,12 @@
+# Documentation build dependencies (pure-Python; independent of the training stack).
+# Install with:  pip install -r docs/requirements.txt
+sphinx>=7.2
+# Same theme torchrl uses (inherits pydata-sphinx-theme); installed from git.
+pytorch_sphinx_theme2 @ git+https://github.com/pytorch/pytorch_sphinx_theme.git@pytorch_sphinx_theme2
+pydata-sphinx-theme>=0.15
+myst-parser>=2.0
+sphinx-design>=0.5
+sphinx-copybutton>=0.5
+sphinx-sitemap>=2.5
+sphinx-togglebutton>=0.3
+linkify-it-py>=2.0

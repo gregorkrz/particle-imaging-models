@@ -26,34 +26,85 @@ DEFAULT_LABEL_PRIORITY = {1: 0, 0: 1, 2: 2, 3: 3, 4: 4}
 
 @DATASETS.register_module()
 class PILArNetH5Dataset(Dataset):
-    """
-    PILArNet-M Dataset that loads directly from h5 files, avoiding the need for preprocessing to individual files.
+    """PILArNet-M LArTPC dataset read directly from clustered HDF5 shards.
 
-    The dataset contains the following semantic classes:
-    - 0: Shower
-    - 1: Track
-    - 2: Michel
-    - 3: Delta
-    - 4: Low energy deposit
+    Loads events straight from ``point``/``cluster``/``cluster_extra`` HDF5
+    arrays (no per-event preprocessing), expands per-cluster truth to per-point
+    arrays, and emits a flat ``dict``. Standard keys per item: ``coord`` (N, 3),
+    ``energy`` (N, 1, raw), ``segment_motif`` (N, 1, semantic class),
+    ``segment_pid`` (N, 1, PID; v2/v3), ``momentum`` (N, 1; v2/v3),
+    ``vertex`` (N, 3; v2/v3, interaction vertex in v3), ``is_primary`` (N, 1;
+    v3 only), ``instance_particle`` and ``instance_interaction`` (N, 1, remapped
+    contiguous ids), ``segment_interaction`` (N, 1, background flag), plus
+    ``name``/``split``/``revision``. After collation a batch adds ``offset``.
+    Registered as ``PILArNetH5Dataset`` -- use as ``type`` under
+    ``data.train``/``data.val``/``data.test``.
 
-    and the following PID classes:
-    - 0: Photon
-    - 1: Electron
-    - 2: Muon
-    - 3: Pion
-    - 4: Proton
-    - 5: None (Low energy deposit)
+    Semantic classes (``segment_motif``): 0 shower, 1 track, 2 Michel, 3 delta,
+    4 low-energy deposit. PID classes (``segment_pid``): 0 photon, 1 electron,
+    2 muon, 3 pion, 4 proton, 5 none/LED (6 when ``old_pid_mapping``).
 
-    PID, momentum, and vertex information is only available in v2/v3.
-    v1 is the original PILArNet dataset in the PoLAr-MAE paper; v2 is the reprocessed PILArNet-M dataset
-    which contains PID, momentum, and particle vertex information; v3 uses the same core layout with
-    interaction-level vertices and primary-particle labels. Note that the events in the splits are different
-    between v1 and v2/v3, so care needs to be taken when evaluating a model that was trained on v1 on v2/v3.
+    Args:
+        data_root (str | None): Root directory of the revision's HDF5 shards.
+            When ``None``, falls back to ``$PILARNET_DATA_ROOT_V1/_V2/_V3`` (by
+            ``revision``) then to ``~/.cache/pimm/pilarnet/<revision>``; raises if
+            none exist. Defaults to ``None``.
+        split (str | Sequence[str]): Split name(s) used to glob ``*<split>/*.h5``
+            under ``data_root``. Defaults to ``"train"``.
+        transform (list[dict]): List of transform configs (NOT a prebuilt
+            ``Compose``). Defaults to ``None``.
+        test_mode (bool): Emit voxelized/augmented test fragments and force
+            ``loop = 1``. Defaults to ``False``.
+        test_cfg (object): Test config (``voxelize``, ``crop``, ``post_transform``,
+            ``aug_transform``); required when ``test_mode``. Defaults to ``None``.
+        loop (int): Train-time epoch multiplier. Defaults to ``1``.
+        ignore_index (int): Ignored-label value. Defaults to ``-1``.
+        energy_threshold (float): Drop points with energy at or below this value
+            when positive. Defaults to ``0.0``.
+        min_points (int): Minimum points per event; smaller events are excluded
+            from the index. Defaults to ``1024``.
+        max_len (int): Cap on event count before the loop multiplier (-1 = no
+            cap). Defaults to ``-1``.
+        remove_low_energy_scatters (bool): Drop the first (LED scatter) cluster
+            and its points. Defaults to ``False``.
+        old_pid_mapping (bool): Map LED PID to ``6`` instead of ``5``. Defaults
+            to ``False``.
+        revision ({"v1", "v2", "v3"}): Dataset revision. v1 is the original
+            PILArNet (no PID/momentum/vertex); v2 adds PID, momentum and particle
+            vertices; v3 adds interaction-level vertices and primary-particle
+            labels. Defaults to ``"v2"``.
+        overlay_n_events (int | tuple[int, int]): Number (or inclusive range) of
+            events to overlay into one point cloud; ``> 1`` enables overlay.
+            Defaults to ``1``.
+        overlay_prob (float): Probability of applying overlay to a given sample.
+            Defaults to ``1.0``.
+        overlay_allow_repeats (bool): Allow the same event to be sampled more
+            than once when overlaying. Defaults to ``True``.
 
-    Event Overlay:
-        Set overlay_n_events > 1 to overlay multiple events into a single point cloud.
-        Overlapping voxels are deduplicated with priority: track > shower > michel > delta > led.
-        Overlay events are randomly rotated by 90-degree increments.
+    Note:
+        Loader settings (``batch_size``, ``num_worker``) live at the top level of
+        the config, not on the dataset constructor. Split membership differs
+        between v1 and v2/v3, so a v1-trained model evaluated on v2/v3 (or vice
+        versa) is not seeing a comparable split. Event overlay deduplicates
+        colliding voxels by semantic priority (track > shower > Michel > delta >
+        LED) and rotates overlaid events by random 90-degree increments.
+
+    Example:
+        .. code-block:: python
+
+            >>> from pimm.datasets.builder import build_dataset
+            >>> ds = build_dataset(dict(type="PILArNetH5Dataset", revision="v2",
+            ...                         split="train", transform=[], min_points=1024))
+            >>> sample = ds[0]
+            >>> sorted(sample)[:6]
+            ['coord', 'energy', 'instance_interaction', 'instance_particle', 'momentum', 'name']
+            >>> sample["coord"].shape          # (N, 3) float32
+            (7366, 3)
+            >>> sample["segment_motif"].shape  # (N, 1) semantic class
+            (7366, 1)
+            >>> # in a config:
+            >>> # data = dict(train=dict(type="PILArNetH5Dataset", split="train",
+            >>> #             revision="v2", min_points=1024, transform=transform))
     """
 
     def __init__(

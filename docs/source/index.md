@@ -1,0 +1,124 @@
+---
+sd_hide_title: true
+---
+
+# pimm — Particle Imaging Models
+
+:::{div} pimm-hero
+
+# Particle Imaging Models
+
+[Foundation-model research for neutrino & particle-imaging detectors — 3D point-cloud perception for liquid-argon TPCs, built on [Pointcept](https://github.com/Pointcept/Pointcept).]{.pimm-tagline}
+
+```{button-ref} getting_started/installation
+:ref-type: myst
+:color: primary
+:class: sd-px-4 sd-fs-6
+Get started
+```
+```{button-link} https://github.com/DeepLearnPhysics/particle-imaging-models
+:color: secondary
+:outline:
+:class: sd-px-4 sd-fs-6
+View on GitHub
+```
+
+:::
+
+---
+
+**pimm** adapts modern deep-learning and computer-vision methods to event
+reconstruction in neutrino detectors. It gives you self-supervised
+pre-training, semantic and panoptic segmentation, exact-resume distributed
+training, and a launch layer that runs the *same* code locally, on a multi-GPU
+node, or across many HPC nodes.
+
+## What's inside
+
+- {doc}`Quick start <getting_started/index>` — install from source or a
+  container, run your first job locally, and learn the three ideas (packed
+  tensors, registries, configs) that make pimm tick.
+- {doc}`Distributed training <distributed/index>` — one launch path for
+  single-GPU, multi-GPU, and multi-node. DDP and FSDP2, deterministic
+  checkpointing, exact mid-epoch resume across world-size changes.
+- {doc}`Scientific computing <hpc/index>` — interactive vs batch submission,
+  site profiles (S3DF, NERSC), QOS, requeue chaining, environment variables, job
+  monitoring, and resuming.
+- {doc}`Checkpoints <checkpoints/index>` — one atomic, reshardable checkpoint
+  format for every parallelism. Save-cadence hooks, manual export, and automatic
+  Hugging Face upload.
+- {doc}`Using trained models <models/index>` — load any export with
+  `pimm.from_pretrained`, warm-start a fine-tune from the Hub, and reproduce the
+  exact dataset format a model expects.
+- {doc}`Datasets & transforms <datasets/index>` — the packed point-cloud
+  contract, PILArNet-M, multimodal LArTPC/Water-Cherenkov readers, transform
+  pipelines, and bringing your own data.
+- {doc}`Hooks <hooks/index>` — the lifecycle hook system (logging, diagnostics,
+  evaluators, checkpoint savers) and how to write your own.
+- {doc}`Evaluation <evaluation/index>` — in-loop evaluators, probe suites for
+  SSL, and final testing with `test.sh`.
+- {doc}`Tutorials <tutorials/index>` — bring your own dataset and train PTv3 for
+  semantic segmentation, then graduate to the Panda panoptic detector.
+- {doc}`API reference <api/index>` — autodoc generated from the source
+  docstrings, with a page per registry (models, datasets, transforms, hooks,
+  losses, trainers).
+
+## Why pimm
+
+**Reproducible by construction.** Every run snapshots `pimm`, `scripts`, and
+`tools` into its experiment directory and trains from that copy. The resolved
+config, model config, and a git-stamped `run_metadata.json` are written
+alongside the checkpoints.
+
+**Exact resume, any world size.** RNG, dataloader position, global step,
+samples-seen, and optimizer/scheduler state are all checkpointed. Resume
+mid-epoch — even on a *different* number of GPUs — and continue bitwise where you
+left off.
+
+**Configs are Python.** No bespoke DSL. Configs are real Python with `_base_`
+inheritance, list comprehensions for layer-wise LRs, and dotted CLI overrides
+for quick probes.
+
+**Built for detectors.** Variable-length detector events are first-class: packed
+`(N, C)` tensors with an `offset` vector, energy-aware transforms, and
+motif/PID/instance labels — no padding, no fixed point counts.
+
+## Integrated work
+
+pimm brings together a stack of methods behind one config and launch surface:
+
+- **Backbones** — [PTv3](https://arxiv.org/abs/2312.10035),
+  [PTv2](https://arxiv.org/abs/2210.05666),
+  [PTv1](https://arxiv.org/abs/2012.09164), and SparseUNet (SpConv/Minkowski).
+- **Pre-training** — [Sonata](https://arxiv.org/abs/2503.16429) /
+  [Panda](https://arxiv.org/abs/2512.01324) discriminative SSL and
+  [PoLAr-MAE](https://arxiv.org/abs/2502.02558) masked autoencoding.
+- **Segmentation** — semantic segmentation, PointGroup, and the
+  [Panda Detector](https://arxiv.org/abs/2512.01324) panoptic model.
+- **Datasets** — [PILArNet-M](https://arxiv.org/abs/2502.02558), multimodal
+  JAXTPC, Water-Cherenkov (LUCiD), MicroBooNE.
+
+:::{seealso}
+New here? Start with **{doc}`getting_started/installation`**, then the
+**{doc}`getting_started/quickstart`**. Coming from another Pointcept-style
+codebase? Skim **{doc}`getting_started/concepts`** for what pimm does
+differently.
+:::
+
+```{toctree}
+:hidden:
+:maxdepth: 2
+
+Getting started <getting_started/index>
+Distributed training <distributed/index>
+Configuration <configuration/index>
+Hooks <hooks/index>
+Checkpoints <checkpoints/index>
+Evaluation <evaluation/index>
+HPC <hpc/index>
+Datasets <datasets/index>
+Trained models <models/index>
+Tutorials <tutorials/index>
+Reference <reference/index>
+API reference <api/index>
+```

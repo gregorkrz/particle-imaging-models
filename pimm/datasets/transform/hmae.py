@@ -5,18 +5,54 @@ from .common import *
 
 @TRANSFORMS.register_module()
 class HierarchicalMaskGenerator(object):
-    """
-    Generate hierarchical masks for MAE style pretraining.
+    """Generate grid-aligned visible/masked patches for MAE-style pretraining.
 
-    Points are grouped into patches at patch_size granularity, then a fraction
-    are randomly masked. The visible points go to the encoder, while masked
-    patch information is stored for the decoder to reconstruct.
-    
-    Uses same grid-based hashing as GridSample to ensure exact alignment with
-    PTv3's coarsest features after hierarchical pooling.
-    
-    Important: Centroids are grid cell centers (not point means) to ensure
-    proper 1:1 correspondence between patches and coarse encoder features.
+    Points are grouped into patches by FNV-hashing grid cells at ``patch_size``
+    granularity (the same hashing as ``GridSample``, so patches align with
+    PTv3's coarsest features after hierarchical pooling), then a ``mask_ratio``
+    fraction of valid patches is randomly masked. Reads ``data_dict["coord"]``
+    (and the keys in ``view_keys``) and writes the encoder-visible arrays
+    (``visible_coord``, ``visible_origin_coord``, ``visible_energy``), the masked
+    patch targets (``masked_centroids`` = grid-cell centers, ``target_coords`` in
+    ``[-1, 1]`` relative to the centroid, ``target_energy``, ``target_offset``,
+    ``masked_point_counts``), the patch counts (``n_visible_patches``,
+    ``n_masked_patches``), and a ``hmae_valid`` flag. ``hmae_valid`` is set
+    ``False`` (and the sample skipped) when there are no points or fewer than two
+    valid patches. Registered as ``HierarchicalMaskGenerator`` — use this string
+    as the ``type`` in a ``transform=[...]`` config list.
+
+    Args:
+        patch_size (float): Edge length of the grid cell defining a patch (same
+            units as ``coord``). Defaults to ``0.016``.
+        mask_ratio (float): Fraction of valid patches to mask. Defaults to
+            ``0.6``.
+        points_per_patch (int): Nominal points-per-patch budget carried for the
+            downstream HMAE target contract. Defaults to ``128``.
+        min_points_per_patch (int): Minimum point count for a patch to be
+            considered valid (masked or visible). Defaults to ``0``.
+        view_keys (tuple): Keys whose visible-point slices are extracted for the
+            encoder. Defaults to ``("coord", "origin_coord", "energy")``.
+
+    Note:
+        Centroids are grid-cell geometric centers (not point means) to keep a
+        1:1 correspondence between patches and coarse encoder features. When
+        ``energy`` is absent, ``visible_energy`` / ``target_energy`` are filled
+        with zeros.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> rng = np.random.default_rng(0)
+            >>> np.random.seed(0)
+            >>> coord = (rng.random((200, 3), dtype="f4") * 0.1)  # tight cluster -> many patches
+            >>> data = {"coord": coord, "origin_coord": coord.copy(),
+            ...         "energy": rng.random((200, 1), dtype="f4")}
+            >>> out = HierarchicalMaskGenerator(patch_size=0.016, mask_ratio=0.6)(data)
+            >>> out["hmae_valid"], out["n_visible_patches"], out["n_masked_patches"]
+            (True, 56, 83)  # 60% of the 139 valid grid patches masked
+            >>> out["visible_coord"].shape, out["target_coords"].shape
+            ((79, 3), (121, 3))  # encoder-visible points vs masked target points (rel. coords)
     """
 
     def __init__(
@@ -207,10 +243,40 @@ class HierarchicalMaskGenerator(object):
 
 @TRANSFORMS.register_module()
 class HMAECollate(object):
-    """Pack HMAE variable-length masked patch targets before batch collation.
+    """Flatten HMAE variable-length masked-patch targets before batch collation.
 
-    Packs target coordinates/energies into flattened arrays with offsets (no padding).
-    Assumes 'energy' will always be present in data_dict.
+    Packs the per-patch lists ``masked_target_coords`` /
+    ``masked_target_energy`` into flattened arrays with offsets (no padding):
+    writes ``target_coords`` ``(total_points, 3)``, ``target_energy``
+    ``(total_points, 1)``, and ``target_offset`` (this sample's total point
+    count), and deletes the two consumed list keys. A no-op when ``hmae_valid``
+    is falsy. Registered as ``HMAECollate`` — use this string as the ``type`` in
+    a ``transform=[...]`` config list.
+
+    Args:
+        points_per_patch (int): Points-per-patch contract carried from the HMAE
+            target builder. Defaults to ``128``.
+
+    Note:
+        Assumes ``energy`` is present in ``data_dict``. The current
+        :class:`HierarchicalMaskGenerator` already produces ``target_coords`` /
+        ``target_energy`` / ``target_offset`` directly, so this collate step is
+        only needed for builders that still emit the per-patch list keys.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> data = {"hmae_valid": True,
+            ...         "masked_target_coords": [np.zeros((3, 3), "f4"),
+            ...                                  np.zeros((2, 3), "f4")],
+            ...         "masked_target_energy": [np.zeros((3, 1), "f4"),
+            ...                                  np.zeros((2, 1), "f4")]}
+            >>> out = HMAECollate()(data)
+            >>> out["target_coords"].shape, out["target_offset"]  # per-patch lists -> flat (3+2)
+            ((5, 3), array([5]))
+            >>> "masked_target_coords" in out                     # consumed list keys removed
+            False
     """
 
     def __init__(

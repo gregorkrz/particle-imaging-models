@@ -6,6 +6,36 @@ from .base import Compose
 
 @TRANSFORMS.register_module()
 class ContrastiveViewsGenerator(object):
+    """Generate two independently-augmented views for contrastive SSL.
+
+    Copies the keys in ``view_keys`` into two sub-dicts, runs the same transform
+    pipeline (built from ``view_trans_cfg``) independently on each, then writes
+    the results back under ``view1_<key>`` and ``view2_<key>`` prefixes (for
+    every key produced by the pipeline). Registered as
+    ``ContrastiveViewsGenerator`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        view_keys (tuple): Keys copied from the source sample into each view.
+            Defaults to ``("coord", "color", "normal", "origin_coord")``.
+        view_trans_cfg (list, optional): Transform config dicts composed into the
+            per-view pipeline applied to both views. Defaults to ``None``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"coord": np.random.rand(10, 3).astype("f4"),
+            ...         "color": np.random.rand(10, 3).astype("f4")}
+            >>> out = ContrastiveViewsGenerator(
+            ...     view_keys=("coord", "color"),
+            ...     view_trans_cfg=[dict(type="RandomFlip", p=1.0)])(data)
+            >>> sorted(k for k in out if k.startswith("view"))
+            ['view1_color', 'view1_coord', 'view2_color', 'view2_coord']
+            # two independently-augmented copies of each view_key
+    """
+
     def __init__(
         self,
         view_keys=("coord", "color", "normal", "origin_coord"),
@@ -30,6 +60,72 @@ class ContrastiveViewsGenerator(object):
 
 @TRANSFORMS.register_module()
 class MultiViewGenerator(object):
+    """Generate multiple global and local crops for DINO/iBOT-style SSL.
+
+    Crops a major global view around a randomly chosen center (restricted in
+    height by ``center_height_scale``), then additional global views and several
+    local views, each a nearest-``k`` neighborhood whose size is a random
+    fraction of the cloud (per ``global_view_scale`` / ``local_view_scale``).
+    Local centers are pushed to cover the major view and, when
+    ``data_dict["anchors"]`` is available, a fraction (``anchor_bias_ratio``) of
+    local crops are centered on anchors. Reads ``data_dict["coord"]`` and the
+    keys in ``view_keys`` (and optional ``anchors``); writes concatenated
+    ``global_<key>`` / ``local_<key>`` arrays with ``global_offset`` /
+    ``local_offset`` boundaries. Registered as ``MultiViewGenerator`` — use this
+    string as the ``type`` in a ``transform=[...]`` config list.
+
+    Args:
+        global_view_num (int): Number of global views (including the major one).
+            Defaults to ``2``.
+        global_view_scale (tuple): ``(min, max)`` fraction of points per global
+            crop. Defaults to ``(0.4, 1.0)``.
+        local_view_num (int): Number of local views. Defaults to ``4``.
+        local_view_scale (tuple): ``(min, max)`` fraction of points per local
+            crop. Defaults to ``(0.1, 0.4)``.
+        global_shared_transform (list, optional): Transform config applied once
+            to the whole sample before any cropping. Defaults to ``None``.
+        global_transform (list, optional): Transform config applied to each
+            global view. Defaults to ``None``.
+        local_transform (list, optional): Transform config applied to each local
+            view. Defaults to ``None``.
+        max_size (int): Upper bound on the points considered per view. Defaults
+            to ``65536``.
+        center_height_scale (tuple): ``(min, max)`` fractional z-band restricting
+            where the major-view center is sampled. Defaults to ``(0, 1)``.
+        shared_global_view (bool): If ``True``, the extra global views are copies
+            of the major view rather than freshly cropped. Defaults to
+            ``False``.
+        center_sampling (str): Center-selection strategy, ``"random"`` or
+            ``"cnms"`` (coverage non-max suppression). Defaults to ``"random"``.
+        center_sampling_kwargs (dict, optional): Extra kwargs for ``cnms`` when
+            ``center_sampling="cnms"``. Defaults to ``None``.
+        view_keys (tuple): Keys cropped into each view; must include ``"coord"``.
+            Defaults to ``("coord", "origin_coord", "color", "normal")``.
+        anchor_bias_ratio (float): Fraction of local views centered on anchors
+            (when anchors are present). Defaults to ``0.6``.
+        anchor_radius_scale (float): Radius scale for anchor-centered local crops
+            (size scales roughly cubically with it). Defaults to ``1.5``.
+        anchor_keys (tuple): Anchor sub-keys pooled as candidate centers; ``led``
+            is always excluded. Defaults to
+            ``("endpoints", "branches_track", "branches_shower", "bragg")``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"coord": np.random.rand(200, 3).astype("f4"),
+            ...         "color": np.random.rand(200, 3).astype("f4"),
+            ...         "index_valid_keys": ["coord", "color"]}
+            >>> out = MultiViewGenerator(global_view_num=2, local_view_num=4,
+            ...                          view_keys=("coord", "color"))(data)
+            >>> out["global_coord"].shape, out["global_offset"]   # 2 global crops concatenated
+            ((356, 3), array([170, 356]))
+            >>> out["local_coord"].shape, out["local_offset"]     # 4 local crops concatenated
+            ((223, 3), array([ 66, 134, 155, 223]))
+            # exact sizes vary with the RNG; offsets mark per-view boundaries
+    """
+
     def __init__(
         self,
         global_view_num=2,
@@ -227,11 +323,48 @@ class MultiViewGenerator(object):
 
 @TRANSFORMS.register_module()
 class MixedScaleGeometryMultiViewGenerator(MultiViewGenerator):
-    """Multi-view generator with normal coarse locals plus fine local crops.
+    """Multi-view generator with coarse locals plus extra fine local crops.
 
-    Fine local crop centers can be sampled uniformly or from a simple local PCA
-    directional-complexity score. This keeps the SSL objective unchanged while
-    changing which local regions feed the local-global loss.
+    Subclass of :class:`MultiViewGenerator` that replaces ``fine_local_view_num``
+    of the local crops with much smaller (``fine_local_view_scale``) crops whose
+    centers come either from uniform sampling (``fine_center_mode="random"``) or
+    from a local-PCA directional-complexity score (``"geometry"``, keeping the
+    top ``fine_center_top_frac`` of points by complexity). Keeps the SSL
+    objective unchanged while steering which local regions feed the local-global
+    loss; reads/writes the same keys as the base class. All base-class arguments
+    are accepted via ``**kwargs``. Registered as
+    ``MixedScaleGeometryMultiViewGenerator`` — use this string as the ``type`` in
+    a ``transform=[...]`` config list.
+
+    Args:
+        fine_local_view_num (int): Number of fine local crops (must satisfy
+            ``0 <= fine_local_view_num <= local_view_num``). Defaults to ``3``.
+        fine_local_view_scale (tuple): ``(min, max)`` fraction of points per fine
+            local crop. Defaults to ``(0.01, 0.04)``.
+        fine_center_mode (str): ``"geometry"`` to bias fine centers toward
+            high-complexity points, or ``"random"`` for uniform. Defaults to
+            ``"geometry"``.
+        fine_center_top_frac (float): Top fraction of points (by complexity)
+            eligible as fine centers in ``"geometry"`` mode. Defaults to
+            ``0.05``.
+        fine_center_k (int): Neighbor count for the local-PCA complexity score.
+            Defaults to ``24``.
+        **kwargs: Forwarded to :class:`MultiViewGenerator`.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"coord": np.random.rand(300, 3).astype("f4"),
+            ...         "energy": np.random.rand(300, 1).astype("f4"),
+            ...         "index_valid_keys": ["coord", "energy"]}
+            >>> out = MixedScaleGeometryMultiViewGenerator(
+            ...     fine_local_view_num=2, local_view_num=4,
+            ...     view_keys=("coord", "energy"))(data)
+            >>> out["local_coord"].shape, out["local_offset"]
+            ((193, 3), array([  8,  14, 105, 193]))
+            # first 2 locals are tiny geometry-biased fine crops (8, 6 pts), then coarse locals
     """
 
     def __init__(

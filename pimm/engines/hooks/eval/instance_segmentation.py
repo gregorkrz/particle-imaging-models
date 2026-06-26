@@ -36,7 +36,83 @@ def _get_writer_step(trainer):
 
 @HOOKS.register_module()
 class InstanceSegmentationEvaluator(HookBase):
-    """Instance-level segmentation metrics including ARI and detection/class stats."""
+    """Instance-level segmentation metrics including ARI and detection/class stats.
+
+    Runs the model with ``return_point=True`` on ``trainer.val_loader`` (batch
+    size MUST be 1), postprocesses predicted instance masks via
+    ``model.postprocess``, and greedily matches them to ground-truth instances
+    by mask IoU. For each configured label it reports detection
+    precision/recall/F1 and mean matched IoU, FP/FN counts, macro
+    classification precision/recall/F1 on matched instances, mean Adjusted Rand
+    Index (ARI), and, when momentum predictions and targets are present,
+    per-class momentum regression MAE/RMSE. Supports a single default label
+    (``labels=(None,)``) or multiple auxiliary labels via
+    ``outputs_by_label``. Results are gathered to rank 0 on multi-GPU. The
+    primary label's detection F1 is published as the checkpoint-selection metric
+    (``current_metric_value`` = ``det_f1``, ``current_metric_name`` =
+    ``<prefix>/ins_det_f1``). Runs after every step when ``every_n_steps > 0``
+    (when ``(global_iter + 1) % every_n_steps == 0``), otherwise after each
+    epoch; only when ``cfg.evaluate`` is true. Registered as
+    ``InstanceSegmentationEvaluator`` (use as ``type`` in a ``hooks=[...]``
+    entry).
+
+    Args:
+        every_n_steps (int): Step cadence; ``0`` evaluates once per epoch.
+            Defaults to ``0``.
+        stuff_threshold (float): Threshold passed to ``model.postprocess`` for
+            stuff/semantic regions. Defaults to ``0.5``.
+        mask_threshold (float): Per-point probability threshold for binarizing
+            predicted masks in postprocessing. Defaults to ``0.5``.
+        class_names (list | dict | None): Class names for logging; a list
+            (shared) or a per-label dict. Falls back to data-config/model
+            metadata. Defaults to ``None``.
+        stuff_classes (list | None): Class ids treated as stuff. Defaults to
+            ``None``.
+        iou_thresh (float): Minimum mask IoU for a prediction to count as a
+            true-positive match. Defaults to ``0.5``.
+        require_class_for_match (bool): Require predicted and GT classes to
+            agree for a match to count. Defaults to ``False``.
+        labels (str | Sequence | None): Label(s) to evaluate; ``None`` evaluates
+            the default instance/segment label. Defaults to ``None`` (treated as
+            ``(None,)``).
+        prefix (str | None): Writer metric prefix; defaults to ``val`` (or
+            ``val/<label>`` for named labels) when ``None``. Defaults to
+            ``None``.
+        primary_label (Any): Label whose ``det_f1`` becomes the selection
+            metric; defaults to the first entry of ``labels``. Defaults to
+            ``None``.
+        set_current_metric (bool): Whether to publish a checkpoint-selection
+            metric at all. Defaults to ``True``.
+        instance_key (str | dict | None): Override input key for GT instance ids
+            (per label). Defaults to ``None``.
+        segment_key (str | dict | None): Override input key for GT semantic
+            labels (per label). Defaults to ``None``.
+        segment_fallback_key (str | dict | None): Fallback semantic key used
+            when ``segment_key`` is absent. Defaults to ``None``.
+        log_ari (bool): Compute and log mean ARI over events. Defaults to
+            ``True``.
+
+    Note:
+        Requires validation batch size 1 (asserted). The selection metric is
+        instance detection F1 of the primary label (higher is better).
+        Momentum regression metrics are only computed when the model exposes a
+        regression criterion and the batch carries a ``momentum`` target.
+
+    Example:
+        Add to ``cfg.hooks`` (validation batch size MUST be 1); it scores
+        instance masks and sets the selection metric:
+
+        .. code-block:: python
+
+            hooks = [
+                dict(type="InstanceSegmentationEvaluator", every_n_steps=2000,
+                     iou_thresh=0.5, labels="particle"),
+            ]
+            # → every 2000 steps logs  val/particle/ins_det_{precision,recall,f1,
+            #   mean_iou,fp,fn,fp_per_gt,fn_per_gt}, val/particle/ins_cls_macro_
+            #   {precision,recall,f1}, val/particle/ins_ari  and sets the
+            #   checkpoint-selection metric to val/particle/ins_det_f1
+    """
 
     def __init__(
         self,

@@ -47,7 +47,67 @@ def _normalize_regression_targets(regression_targets):
 
 @LOSSES.register_module()
 class FastInstanceSegmentationRegressionLoss(nn.Module):
-    """Fast instance segmentation loss with configurable matched regressions."""
+    """Instance segmentation loss plus configurable per-instance regressions.
+
+    Extends :class:`FastInstanceSegmentationLoss` (same Hungarian matching, focal
+    mask, Dice, and classification terms) with an arbitrary set of continuous
+    regression heads supervised on matched query/instance pairs. Each entry in
+    ``regression_targets`` names a prediction key (default ``pred_<name>``), an
+    ``input_dict`` target key (default ``<name>``), a per-instance aggregation
+    (``"mean"`` or ``"first"``), a per-target ``criterion`` (default
+    ``SmoothL1RegressionLoss``), and a ``loss_weight``. Deep supervision over
+    ``aux_outputs`` is summed and scaled by ``aux_loss_weight``.
+
+    ``forward(pred, input_dict)`` returns ``(loss, components)`` with the mask/
+    class diagnostics plus one scalar per regression target. Registered as
+    ``FastInstanceSegmentationRegressionLoss``.
+
+    Args:
+        cost_mask (float): Matcher weight on the focal mask cost. Defaults to
+            ``1.0``.
+        cost_dice (float): Matcher weight on the Dice cost. Defaults to ``1.0``.
+        cost_class (float): Matcher weight on the classification cost. Defaults to
+            ``0.0``.
+        num_points (int): Sampled points for the mask cost (``0`` uses all).
+            Defaults to ``0``.
+        ignore_index (int): Instance/segment id treated as void. Defaults to
+            ``-1``.
+        loss_weight_focal (float): Weight on the focal mask loss. Defaults to
+            ``1.0``.
+        loss_weight_dice (float): Weight on the Dice loss. Defaults to ``1.0``.
+        cls_weight_matched (float): Weight on the matched-query CE term. Defaults
+            to ``2.0``.
+        cls_weight_noobj (float): Weight on the no-object CE term. Defaults to
+            ``0.1``.
+        focal_alpha (float): Focal-loss positive-class weight. Defaults to
+            ``0.25``.
+        focal_gamma (float): Focal-loss focusing exponent. Defaults to ``2.0``.
+        truth_label (str): ``input_dict`` key holding per-point instance ids.
+            Defaults to ``"segment"``.
+        aux_loss_weight (float): Scale on the summed auxiliary loss. Defaults to
+            ``1.0``.
+        regression_targets: List (or name-keyed dict) of regression-target
+            configs as described above. Defaults to ``None``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import torch
+            >>> from pimm.models.losses.instance_regression_fast import (
+            ...     FastInstanceSegmentationRegressionLoss)
+            >>> crit = FastInstanceSegmentationRegressionLoss(
+            ...     truth_label="instance",
+            ...     regression_targets=[dict(name="momentum", loss_weight=1.0)])
+            >>> # pred needs pred_masks plus pred_<name> for each regression target
+            >>> pred = {"pred_masks": [torch.randn(8, 50)],
+            ...         "pred_momentum": [torch.randn(8, 1)]}
+            >>> inst = torch.zeros(50, dtype=torch.long)
+            >>> inst[10:30] = 1; inst[30:50] = 2
+            >>> input_dict = {"instance": inst.view(-1, 1), "momentum": torch.randn(50, 1)}
+            >>> loss, comp = crit(pred, input_dict)   # scalar loss + diagnostics dict
+            >>> "momentum" in comp                    # one scalar per regression target
+            True
+    """
 
     def __init__(
         self,

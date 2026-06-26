@@ -18,7 +18,73 @@ from pimm.models.panda_detector.matcher_fast import (
 
 @LOSSES.register_module()
 class FastInstanceSegmentationLoss(nn.Module):
-    """Instance segmentation loss with cached targets and vectorized mask costs."""
+    """Mask2Former-style instance segmentation loss (cached, vectorized).
+
+    Computes a set-prediction loss between per-query predicted masks and
+    ground-truth instances. Targets are cached once per call (built from the
+    per-point ``truth_label`` ids), a fast Hungarian matcher assigns queries to
+    instances, and matched pairs incur a focal mask loss, a Dice loss, and a
+    classification loss (matched -> instance class, unmatched -> a no-object
+    class). Optional momentum and IoU terms are added when their weights are
+    positive and the predictions/targets are present. Deep supervision over
+    ``aux_outputs`` is summed and scaled by ``aux_loss_weight``.
+
+    ``forward(pred, input_dict)`` expects ``pred`` to be a dict with
+    ``pred_masks`` (list of ``(Q, P)`` tensors per batch element) and optionally
+    ``pred_logits``/``pred_momentum``/``pred_iou``/``aux_outputs``, and
+    ``input_dict`` to provide ``truth_label`` (and ``segment`` for the class
+    term). Returns ``(loss, components)`` where ``components`` is a dict of scalar
+    diagnostics (``focal``, ``dice``, ``cls_matched``, ``num_pairs``, ...).
+    Registered as ``FastInstanceSegmentationLoss``.
+
+    Args:
+        cost_mask (float): Matcher weight on the focal mask cost. Defaults to
+            ``1.0``.
+        cost_dice (float): Matcher weight on the Dice cost. Defaults to ``1.0``.
+        cost_class (float): Matcher weight on the classification cost. Defaults to
+            ``0.0``.
+        num_points (int): Number of sampled points for the mask cost (``0`` uses
+            all points). Defaults to ``0``.
+        ignore_index (int): Instance/segment id treated as void. Defaults to
+            ``-1``.
+        loss_weight_focal (float): Weight on the focal mask loss. Defaults to
+            ``1.0``.
+        loss_weight_dice (float): Weight on the Dice loss. Defaults to ``1.0``.
+        cls_weight_matched (float): Weight on the matched-query CE term. Defaults
+            to ``2.0``.
+        cls_weight_noobj (float): Weight on the no-object CE term. Defaults to
+            ``0.1``.
+        focal_alpha (float): Focal-loss positive-class weight. Defaults to
+            ``0.25``.
+        focal_gamma (float): Focal-loss focusing exponent. Defaults to ``2.0``.
+        truth_label (str): ``input_dict`` key holding per-point instance ids.
+            Defaults to ``"segment"``.
+        aux_loss_weight (float): Scale on the summed auxiliary (deep-supervision)
+            loss. Defaults to ``1.0``.
+        momentum_loss_weight (float): Weight on the per-instance momentum
+            regression term (``0`` disables). Defaults to ``0.0``.
+        iou_loss_weight (float): Weight on the mask-IoU prediction term (``0``
+            disables). Defaults to ``0.0``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import torch
+            >>> from pimm.models.losses.instance_fast import FastInstanceSegmentationLoss
+            >>> crit = FastInstanceSegmentationLoss(truth_label="instance")
+            >>> # pred: dict with per-batch mask logits; here 1 event, Q=8 queries, P=50 points
+            >>> pred = {"pred_masks": [torch.randn(8, 50)]}
+            >>> inst = torch.zeros(50, dtype=torch.long)  # per-point instance ids
+            >>> inst[10:30] = 1; inst[30:50] = 2
+            >>> input_dict = {"instance": inst.view(-1, 1)}
+            >>> loss, comp = crit(pred, input_dict)       # scalar loss + diagnostics dict
+            >>> float(loss)                               # e.g. 0.71 (focal + dice)
+            0.7063...
+            >>> sorted(comp)[:4]
+            ['cls_matched', 'cls_noobj', 'dice', 'focal']
+            >>> # add pred["pred_logits"]/["pred_momentum"] + input_dict["segment"]/["momentum"]
+            >>> # to activate the classification / momentum terms.
+    """
 
     def __init__(
         self,

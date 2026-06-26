@@ -202,28 +202,31 @@ def load_pretrained(
     filter_fn: Optional[Callable[[Dict[str, Any], torch.nn.Module], Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Load pretrained weights into model with flexible key matching.
-    
+
     This function supports various loading scenarios:
+
     - Full checkpoint loading (all keys match)
     - Partial loading with prefix filtering (e.g., load only "backbone." weights)
     - Key remapping (e.g., map "student.backbone." to "backbone.")
     - Custom filtering via filter_fn
-    
-    Examples:
-        # Load full checkpoint
-        load_pretrained(model, 'checkpoint.pth')
-        
-        # Load only backbone weights from Sonata checkpoint
-        load_pretrained(model, 'sonata_checkpoint.pth', prefix='student.backbone.')
-        
-        # Load backbone weights and remap keys
-        load_pretrained(
-            model, 
-            'sonata_checkpoint.pth',
-            prefix='student.backbone.',
-            key_mapping={'backbone.': ''}  # Remove 'backbone.' prefix
-        )
-    
+
+    Example:
+        .. code-block:: python
+
+            # Load full checkpoint
+            load_pretrained(model, "checkpoint.pth")
+
+            # Load only backbone weights from a Sonata checkpoint
+            load_pretrained(model, "sonata_checkpoint.pth", prefix="student.backbone.")
+
+            # Load backbone weights and remap keys
+            load_pretrained(
+                model,
+                "sonata_checkpoint.pth",
+                prefix="student.backbone.",
+                key_mapping={"backbone.": ""},  # remove the "backbone." prefix
+            )
+
     Args:
         model: Model to load weights into.
         checkpoint_path: Path to checkpoint file.

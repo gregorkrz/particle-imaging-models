@@ -36,7 +36,56 @@ def _get_writer_step(trainer):
 
 @HOOKS.register_module()
 class SemSegEvaluator(HookBase):
-    """Evaluate point-wise semantic segmentation on the validation loader."""
+    """Evaluate point-wise semantic segmentation on the validation loader.
+
+    Runs the model over ``trainer.val_loader``, argmaxes the semantic logits
+    (``seg_logits`` or ``sem_logits``), and accumulates per-class
+    intersection/union/target counts (all-reduced across ranks). It reports
+    mIoU, mAcc, allAcc and macro precision/recall/F1 plus a per-class table,
+    and publishes ``mIoU`` as the checkpoint-selection metric via
+    ``trainer.comm_info["current_metric_value"]`` /
+    ``["current_metric_name"]``. When ``origin_coord`` is present, predictions
+    are interpolated back to the original (pre-grid) points with a kNN query.
+    Optionally computes majority-vote per-instance class metrics. Runs after
+    every step when ``every_n_steps > 0`` (on iterations where
+    ``(global_iter + 1) % every_n_steps == 0``), otherwise after each epoch;
+    only when ``cfg.evaluate`` is true. Registered as ``SemSegEvaluator`` (use
+    as ``type`` in a ``hooks=[...]`` entry).
+
+    Args:
+        write_cls_iou (bool): Also log per-class IoU/F1/precision/recall to the
+            writer. Defaults to ``False``.
+        every_n_steps (int): Step cadence; ``0`` evaluates once per epoch.
+            Defaults to ``0``.
+        ignore_index (int): Label id ignored when computing per-instance
+            majority-vote metrics. Defaults to ``-1``.
+        macro_ignore_class_ids (Sequence[int] | None): Class ids excluded from
+            macro (mean) metrics; deduplicated and sorted. Defaults to ``None``.
+        per_instance_metrics (bool): Compute majority-vote per-event instance
+            class metrics when instance labels are available. Defaults to
+            ``False``.
+
+    Note:
+        The selection metric is ``mIoU`` (higher is better). Per-instance
+        metrics additionally require instance labels in the batch and per-event
+        boundary tracking; they are logged but do not change the selection
+        metric.
+
+    Example:
+        Add to ``cfg.hooks`` before the checkpoint saver; every ``every_n_steps``
+        it validates and sets the selection metric:
+
+        .. code-block:: python
+
+            hooks = [
+                dict(type="SemSegEvaluator", every_n_steps=1000,
+                     write_cls_iou=True),
+            ]
+            # → every 1000 steps logs  val/loss, val/mIoU, val/mAcc, val/allAcc,
+            #   val/mPrecision, val/mRecall, val/mF1  (+ per-class IoU/F1/Precision/
+            #   Recall with write_cls_iou) and sets the checkpoint-selection metric
+            #   to mIoU
+    """
 
     def __init__(self, write_cls_iou=False, every_n_steps=0, ignore_index=-1, macro_ignore_class_ids=None, per_instance_metrics=False):
         """Configure evaluation cadence, macro masking, and instance summaries."""

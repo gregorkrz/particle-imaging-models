@@ -17,8 +17,45 @@ def _get_writer_step(trainer):
 
 @HOOKS.register_module()
 class MAEEvaluator(HookBase):
-    """
-    Validation hook for MAE that logs reconstruction losses on the validation set.
+    """Validation hook for masked-autoencoder (MAE) pretraining.
+
+    Runs the MAE model over ``trainer.val_loader`` on rank 0 only (other ranks
+    synchronize), averaging the reconstruction losses (total, coordinate,
+    feature) and the actual mask ratio over the valid batches (batches whose
+    ``loss == 0`` from empty masks are skipped). On the first batch it can log
+    ground-truth vs reconstructed point-cloud visualizations to Weights &
+    Biases. It publishes the NEGATIVE average validation loss as the
+    checkpoint-selection metric (``current_metric_value`` = ``-avg_loss``,
+    ``current_metric_name`` = ``neg_val_loss``) so that higher is better. Uses
+    AMP autocast when ``cfg.enable_amp`` is set. Runs after every step when
+    ``every_n_steps > 0`` (when ``(global_iter + 1) % every_n_steps == 0``),
+    otherwise after each epoch; only when ``cfg.evaluate`` is true and
+    ``val_loader`` is not ``None``. Registered as ``MAEEvaluator`` (use as
+    ``type`` in a ``hooks=[...]`` entry).
+
+    Args:
+        every_n_steps (int): Step cadence; ``0`` evaluates once per epoch.
+            Defaults to ``0``.
+        max_batches (int | None): Cap on validation batches per eval for speed;
+            ``None`` uses all batches. Defaults to ``None``.
+        log_pointclouds (bool): Log first-batch GT/reconstruction point clouds to
+            wandb. Defaults to ``True``.
+
+    Note:
+        The selection metric is NEGATIVE validation loss (``neg_val_loss``);
+        higher (less negative) is better. Evaluation runs on rank 0 only.
+
+    Example:
+        Add to ``cfg.hooks`` for MAE pretraining; every ``every_n_steps`` it runs
+        reconstruction validation on rank 0:
+
+        .. code-block:: python
+
+            hooks = [dict(type="MAEEvaluator", every_n_steps=1000, max_batches=50)]
+            # → every 1000 steps logs  val/loss, val/coord_loss, val/feat_loss,
+            #   val/mask_ratio  to the writer (and first-batch GT/recon point clouds
+            #   to wandb), then sets the checkpoint-selection metric to neg_val_loss
+            #   (= -avg loss, so higher is better)
     """
 
     def __init__(self, every_n_steps: int = 0, max_batches: int = None, log_pointclouds: bool = True):

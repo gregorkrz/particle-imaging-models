@@ -1,0 +1,121 @@
+# =============================================================================
+# pimm documentation — build & publish
+# =============================================================================
+#
+# Publishes the Sphinx docs to
+#   https://deeplearnphysics.org/particle-imaging-models/stable/
+#
+# This mirrors how DeepLearnPhysics/doraemon_site deploys: NATIVE GitHub
+# Pages-from-Actions (actions/upload-pages-artifact + actions/deploy-pages) on
+# THIS repo's own `github-pages` environment. Because the org has a verified
+# custom domain (deeplearnphysics.org / www, cert already issued), GitHub serves
+# each project repo's Pages at  deeplearnphysics.org/<repo-name>/  — here that is
+# /particle-imaging-models/.  No deploy keys, no writing into another repo, no
+# CNAME in this workflow (the org owns the domain).
+#
+# Why a `stable/` subdirectory? Native Pages serves ONE artifact at the repo
+# root (/particle-imaging-models/), and each deploy REPLACES the whole site. We
+# build into  _site/stable/  and drop a root redirect, so the canonical URL is
+# /particle-imaging-models/stable/ (matching conf.py `html_baseurl`). Adding
+# /latest/ + per-version slots later means merging previous content into the
+# single artifact — see docs/DEPLOYMENT.md.
+#
+# Build-environment note: `make -C docs html` runs gen_api.py AND sphinx-autodoc,
+# both of which `import pimm` -> which hard-imports `spconv.pytorch` (and a few
+# models hard-import `flash_attn`). A vanilla CPU runner has none of that, so we
+# build INSIDE the project Docker image, which already ships the full stack.
+#
+# The image is multi-GB; GitHub-hosted runners only have ~14 GB free by default,
+# so the build job FREES DISK before pulling it and runs the image via
+# `docker run` (a `container:` job can't free space first — it pulls the image
+# before any step runs). The whole workflow is also gated to the canonical
+# public repo, so it never runs on the private working repo or forks.
+# =============================================================================
+
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - 'docs/**'
+      - 'pimm/**'
+      - 'pyproject.toml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+# Least privilege for the native Pages deployment (same set doraemon_site uses).
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# GitHub's recommended Pages concurrency: serialize, don't abort an in-flight
+# deployment.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Only the canonical public repo builds/publishes — never the private working
+    # repo or forks (this is also why the heavy image pull should not run there).
+    if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # tags + history (autodoc/version niceties)
+
+      # Reclaim ~20-30 GB so the multi-GB CUDA image fits. Must happen BEFORE the
+      # image is pulled, which is why this job uses `docker run` rather than a
+      # `container:` job (the latter pulls the image before any step runs).
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+                      "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          sudo docker image prune -af || true
+          df -h /
+
+      # Build inside the project image (has torch/spconv/flash_attn/pimm). The
+      # image's default Python resolves `pimm`; we reinstall the checkout (no
+      # deps) so autodoc/gen_api document THIS commit, then add the Sphinx deps.
+      - name: Build the docs inside the project image
+        run: |
+          docker run --rm -v "$PWD":/work -w /work \
+            youngsm/pimm:pytorch2.5.0-cuda12.4 \
+            bash -lc "pip install -e . --no-deps \
+                      && pip install -r docs/requirements.txt \
+                      && make -C docs html"
+          sudo chown -R "$(id -u):$(id -g)" docs/build
+
+      # Assemble the Pages artifact: site under /stable/, plus a root redirect so
+      # /particle-imaging-models/ lands on /particle-imaging-models/stable/.
+      - name: Assemble Pages site
+        run: |
+          mkdir -p _site/stable
+          cp -r docs/build/html/. _site/stable/
+          printf '<!doctype html>\n<meta http-equiv="refresh" content="0; url=stable/">\n<title>pimm docs</title>\n<a href="stable/">pimm documentation</a>\n' > _site/index.html
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

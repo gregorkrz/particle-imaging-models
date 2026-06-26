@@ -11,7 +11,38 @@ from pimm.engines.hooks.default import HookBase
 
 @HOOKS.register_module()
 class FinalEvaluator(HookBase):
-    """Run the configured tester after training, usually on model_best."""
+    """Run the configured tester once after training, usually on model_best.
+
+    On ``after_train`` (and only when ``cfg.evaluate`` is true), builds the
+    tester named by ``cfg.test.type`` from the ``TESTERS`` registry and runs its
+    full ``test()`` pass. By default it loads ``model_best.pth`` (the best
+    checkpoint selected during training) into the tester before testing; set
+    ``test_last=True`` to instead test the in-memory ``model_last`` weights. This
+    hook computes no metric of its own and does not set the checkpoint-selection
+    ``comm_info`` keys — it delegates all metric computation to the tester.
+    Registered as ``FinalEvaluator`` (use as ``type`` in a ``hooks=[...]``
+    entry).
+
+    Args:
+        test_last (bool): Test the current ``model_last`` weights instead of
+            loading ``model_best.pth``. Defaults to ``False``.
+
+    Note:
+        Runs exactly once, after training exits. When ``test_last`` is ``False``
+        the best checkpoint is loaded with ``strict=True``, so the tester model
+        architecture must match the saved state dict.
+
+    Example:
+        Add to ``cfg.hooks``; once in ``after_train`` it runs the configured
+        tester on the best checkpoint:
+
+        .. code-block:: python
+
+            hooks = [dict(type="FinalEvaluator", test_last=False)]
+            # → after training, builds cfg.test.type from the TESTERS registry,
+            #   loads <save_path>/model/model_best.pth (strict=True) into it, and
+            #   runs tester.test(); computes no metric of its own
+    """
 
     def __init__(self, test_last=False):
         """Select whether final evaluation uses model_last instead of model_best."""

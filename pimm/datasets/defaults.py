@@ -28,11 +28,57 @@ from .transform import Compose, TRANSFORMS
 
 @DATASETS.register_module()
 class DefaultDataset(Dataset):
-    """Load a directory or split-file collection of numpy assets.
+    """Generic point-cloud dataset over preprocessed per-event ``.npy`` assets.
 
-    Each item is a flat dict keyed by asset name, with at minimum ``coord``,
-    ``segment``, ``instance``, ``name``, and ``split``. Missing segmentation or
-    instance labels are filled with ``ignore_index``-style ``-1`` arrays.
+    Reads one directory per event, loading every ``<asset>.npy`` whose stem is in
+    :attr:`VALID_ASSETS` (``coord``, ``color``, ``normal``, ``strength``,
+    ``segment``, ``instance``, ``pose``). Each item is a flat ``dict`` keyed by
+    asset name and always carries ``coord``, ``segment``, ``instance``, ``name``,
+    and ``split``; missing ``segment``/``instance`` labels are filled with
+    ``-1`` arrays (the ``ignore_index`` convention). After collation a batch adds
+    the ``offset`` key delimiting per-sample point spans. Registered as
+    ``DefaultDataset`` -- use as ``type`` under ``data.train``/``data.val``/
+    ``data.test``.
+
+    Args:
+        split (str | Sequence[str]): Split name(s). A name is treated as a JSON
+            split file under ``data_root`` if such a file exists, otherwise as a
+            subdirectory whose children are event directories. Defaults to
+            ``"train"``.
+        data_root (str): Root directory holding the split files/subdirectories.
+            Defaults to ``"data/dataset"``.
+        transform (list[dict]): List of transform configs (NOT a prebuilt
+            ``Compose``); assembled internally. Defaults to ``None``.
+        test_mode (bool): When ``True``, emit voxelized/augmented test fragments
+            instead of a single transformed sample, and force ``loop = 1``.
+            Defaults to ``False``.
+        test_cfg (object): Test-time config providing ``voxelize``, ``crop``,
+            ``post_transform``, and ``aug_transform``. Required when
+            ``test_mode`` is ``True``. Defaults to ``None``.
+        cache (bool): When ``True``, read each event from a shared-memory cache
+            keyed by sample name instead of from disk. Defaults to ``False``.
+        ignore_index (int): Label value for ignored/unlabelled points. Defaults
+            to ``-1``.
+        loop (int): Train-time epoch multiplier applied to the sample count
+            (forced to ``1`` in test mode). Defaults to ``1``.
+
+    Note:
+        Loader settings (``batch_size``, ``num_worker``) live at the top level of
+        the config, not on the dataset constructor.
+
+    Example:
+        .. code-block:: python
+
+            >>> from pimm.datasets.builder import build_dataset
+            >>> ds = build_dataset(dict(type="DefaultDataset", split="train",
+            ...                         data_root="data/dataset", transform=[]))
+            >>> sample = ds[0]
+            >>> # get_data always returns these keys (coord/segment/instance,
+            >>> # with segment/instance filled to -1 when absent on disk):
+            >>> #   coord (N, 3), segment (N,), instance (N,), name, split
+            >>> # plus any present optional assets: color, normal, strength, pose
+            >>> sorted(sample)            # doctest: +SKIP
+            ['coord', 'instance', 'name', 'segment', 'split']
     """
 
     VALID_ASSETS = [
@@ -199,11 +245,37 @@ class DefaultDataset(Dataset):
 
 @DATASETS.register_module()
 class ConcatDataset(Dataset):
-    """Concatenate configured datasets while preserving per-dataset ratios.
+    """Concatenate several configured datasets into a single index space.
 
-    ``loop`` is used by ``MultiDatasetDataloader`` as the epoch multiplier for
-    the main dataset; child dataset ``loop`` values can also act as sampling
-    ratios when mixed batches are built.
+    Builds each child dataset from its config and flattens them into a shared
+    index of ``(dataset_index, local_index)`` pairs, so a single sampler can draw
+    from all of them. Items pass through unchanged from the owning child, so the
+    emitted keys (``coord``, ``segment``, ``instance``, ``offset`` after
+    collation, ...) are whatever the children emit. Registered as
+    ``ConcatDataset`` -- use as ``type`` under ``data.train``/``data.val``/
+    ``data.test``.
+
+    Args:
+        datasets (list[dict]): List of child dataset configs, each built with
+            :func:`build_dataset`.
+        loop (int): Epoch multiplier applied to the concatenated length. Also
+            consumed by ``MultiDatasetDataloader`` as the main-dataset epoch
+            multiplier; per-child ``loop`` values can act as sampling ratios when
+            mixed batches are built. Defaults to ``1``.
+
+    Example:
+        .. code-block:: python
+
+            >>> from pimm.datasets.builder import build_dataset
+            >>> ds = build_dataset(dict(type="ConcatDataset", datasets=[
+            ...     dict(type="PILArNetH5Dataset", revision="v2", split="train", transform=[]),
+            ...     dict(type="PILArNetH5Dataset", revision="v2", split="val", transform=[]),
+            ... ]))
+            >>> len(ds)                   # sum of child lengths (x loop)  # doctest: +SKIP
+            1234567
+            >>> sample = ds[0]            # item passes through unchanged from the owning child
+            >>> # keys are whatever that child emits (here PILArNet: coord, energy,
+            >>> # segment_motif, instance_particle, name, split, ...)
     """
 
     def __init__(self, datasets, loop=1):

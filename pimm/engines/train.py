@@ -61,7 +61,18 @@ AMP_DTYPE = dict(
 
 
 class TrainerBase:
-    """Base class for hook-driven trainer lifecycle execution."""
+    """Abstract hook-driven training lifecycle.
+
+    Defines the generic train loop -- ``before_train`` -> per-epoch
+    (``before_epoch`` -> per-step ``before_step``/``run_step``/``after_step``) ->
+    ``after_epoch`` -> ``after_train`` -- where each phase fans out to the
+    registered :class:`HookBase` instances (checkpointing, logging, evaluation,
+    schedulers). Holds the shared mutable state hooks read and write (``model``,
+    loaders, ``optimizer``, ``scheduler``, ``scaler``, ``epoch``/``global_step``
+    counters, ``comm_info``, ``storage``, ``writer``). Subclasses must implement
+    :meth:`run_step`; this base class is not registered and is not selected
+    directly via config.
+    """
 
     def __init__(self) -> None:
         """Initialize shared lifecycle counters and hook-visible state."""
@@ -186,7 +197,22 @@ class TrainerBase:
 
 @TRAINERS.register_module("DefaultTrainer")
 class Trainer(TrainerBase):
-    """Default single-dataset trainer with resume-aware dataloading."""
+    """Default single-dataset supervised/SSL trainer.
+
+    Builds everything from one ``cfg`` (model, train/val/test loaders, optimizer,
+    scheduler, AMP scaler, hooks, writer, and the parallel context) and runs the
+    standard AMP forward/backward optimization step in :meth:`run_step`. The
+    train loop is resume-aware: it restores ``start_epoch``/``start_iter`` and the
+    global step from checkpoint hooks, re-aligns metric writers and the dataloader
+    cursor, and treats ``cfg.epoch`` as the absolute horizon so a run can be
+    extended without changing schedules. Registered as ``DefaultTrainer`` --
+    select via ``train = dict(type="DefaultTrainer")`` (the default).
+
+    Args:
+        cfg: Fully-resolved run config providing ``save_path``, ``epoch``,
+            ``resume``, the ``model``/``data``/``optimizer``/``scheduler``/``hooks``
+            sub-configs, and the distributed/AMP settings.
+    """
 
     def __init__(self, cfg):
         """Build model, data loaders, optimizer, scheduler, hooks, and writer."""
@@ -520,7 +546,18 @@ class Trainer(TrainerBase):
 
 @TRAINERS.register_module("GRPOTrainer")
 class GRPOTrainer(Trainer):
-    """Trainer-level GRPO loop with cached rollouts and K policy updates."""
+    """Reinforcement-learning trainer implementing GRPO at the trainer level.
+
+    Replaces the single supervised optimization step with a rollout-based loop:
+    each batch is sampled into a group of trajectories, then the policy is updated
+    ``policy_updates_per_rollout`` times over the cached rollout (optionally split
+    into trajectory microbatches to bound memory). The scheduler is sized to
+    ``len(train_loader) * epoch * policy_updates_per_rollout`` accordingly, and
+    scalar GRPO metrics are reduced across ranks with key-specific ops
+    (min/max/mean). Inherits all model/loader/optimizer construction from
+    :class:`Trainer`. Registered as ``GRPOTrainer`` -- select via
+    ``train = dict(type="GRPOTrainer")``.
+    """
 
     def _sync_grpo_scalar_metrics(self, output_dict):
         """Reduce scalar GRPO metrics across ranks with key-specific ops."""
@@ -861,7 +898,14 @@ class GRPOTrainer(Trainer):
 
 @TRAINERS.register_module("MultiDatasetTrainer")
 class MultiDatasetTrainer(Trainer):
-    """Trainer variant that delegates sampling to MultiDatasetDataloader."""
+    """Trainer that draws mixed batches from several datasets.
+
+    Identical to :class:`Trainer` except :meth:`build_train_loader` swaps the
+    standard loader for ``MultiDatasetDataloader``, which samples across the
+    configured datasets (honoring per-dataset ratios and ``mix_prob``) and defines
+    the epoch length. Registered as ``MultiDatasetTrainer`` -- select via
+    ``train = dict(type="MultiDatasetTrainer")``.
+    """
 
     def build_train_loader(self):
         """Build a multi-dataset train loader and expose its epoch length."""
@@ -881,8 +925,16 @@ class MultiDatasetTrainer(Trainer):
 
 @TRAINERS.register_module("InsegTrainer")
 class InsegTrainer(Trainer):
-    """Trainer for instance segmentation that handles multiple queries per sample."""
-    
+    """Trainer for instance segmentation with instance-aware collation.
+
+    Identical to :class:`Trainer` except the train and val loaders use
+    ``inseg_collate_fn`` (which preserves variable per-sample instance/query
+    targets and applies ``mix_prob`` only at train time) over a stateful,
+    resume-able sampler/loader. Use with the instance-segmentation losses
+    (e.g. ``FastInstanceSegmentationLoss``). Registered as ``InsegTrainer`` --
+    select via ``train = dict(type="InsegTrainer")``.
+    """
+
     def build_train_loader(self):
         """Build the stateful instance-segmentation training loader."""
         train_data = build_dataset(self.cfg.data.train)
@@ -949,9 +1001,11 @@ class InsegTrainer(Trainer):
 class ImageClassTrainer(Trainer):
     """Trainer for dense 2D image batches (e.g. rasterized ring images).
 
-    Uses ``default_collate`` to stack per-event ``image`` -> ``(B, C, H, W)`` and
-    scalar labels/momenta -> ``(B, 1)`` instead of the point-cloud collate that
-    concatenates variable-length clouds along a single axis.
+    Identical to :class:`Trainer` except the train loader uses ``default_collate``
+    to stack per-event ``image`` into ``(B, C, H, W)`` and scalar labels/momenta
+    into ``(B, 1)``, instead of the point-cloud collate that concatenates
+    variable-length clouds along a single axis. Registered as
+    ``ImageClassTrainer`` -- select via ``train = dict(type="ImageClassTrainer")``.
     """
 
     def build_train_loader(self):

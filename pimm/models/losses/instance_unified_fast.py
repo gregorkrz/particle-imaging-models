@@ -84,7 +84,87 @@ def _normalize_query_heads(query_heads):
 
 @LOSSES.register_module()
 class FastUnifiedInstanceLoss(nn.Module):
-    """Outer wrapper: final-layer loss + auxiliary deep supervision."""
+    """Unified instance loss for detector-v4: masks + arbitrary per-query heads.
+
+    Superset of :class:`FastInstanceSegmentationLoss` that supervises an arbitrary
+    set of per-query heads (categorical *and* continuous, via ``query_heads``) and
+    supports an overlap-aware mode. Two modes, selected by ``overlap``:
+
+    * ``overlap=False`` (default): mutually-exclusive masks. Ground truth is the
+      per-point ``truth_label`` instance ids; matching/mask/dice/class are
+      identical to the fast instance loss. Continuous heads aggregate the
+      per-point target per instance (mean/first); categorical heads aggregate by
+      mode/first and apply cross-entropy.
+    * ``overlap=True``: overlapping masks. Ground truth is a multi-hot membership
+      matrix (``membership_key``, e.g. ``inst_pe``) gated by a per-event
+      ``valid_key`` (e.g. ``ring_valid``); per-instance head targets come from
+      per-instance tensors. Matching is a per-event scipy Hungarian over float
+      masks, mirroring the ring panoptic detector.
+
+    Deep supervision over ``aux_outputs`` is summed and scaled by
+    ``aux_loss_weight``. ``forward(pred, input_dict)`` returns ``(loss,
+    components)``. Registered as ``FastUnifiedInstanceLoss``.
+
+    Args:
+        cost_mask (float): Matcher weight on the focal mask cost. Defaults to
+            ``1.0``.
+        cost_dice (float): Matcher weight on the Dice cost. Defaults to ``1.0``.
+        cost_class (float): Matcher weight on the classification cost. Defaults to
+            ``0.0``.
+        num_points (int): Sampled points for the mask cost (``0`` uses all).
+            Defaults to ``0``.
+        ignore_index (int): Instance id treated as void. Defaults to ``-1``.
+        loss_weight_focal (float): Weight on the focal mask loss. Defaults to
+            ``1.0``.
+        loss_weight_dice (float): Weight on the Dice loss. Defaults to ``1.0``.
+        cls_weight_matched (float): Weight on the matched-query CE term. Defaults
+            to ``2.0``.
+        cls_weight_noobj (float): Weight on the no-object CE term. Defaults to
+            ``0.1``.
+        focal_alpha (float): Focal-loss positive-class weight. Defaults to
+            ``0.25``.
+        focal_gamma (float): Focal-loss focusing exponent. Defaults to ``2.0``.
+        truth_label (str): ``input_dict`` key holding per-point instance ids
+            (non-overlap mode). Defaults to ``"instance"``.
+        aux_loss_weight (float): Scale on the summed auxiliary loss. Defaults to
+            ``1.0``.
+        query_heads: List (or name-keyed dict) of per-query head configs, each
+            with ``name``, ``kind`` (``"continuous"``/``"categorical"``),
+            ``pred_key``, ``target_key``, ``aggregation``, ``criterion``, and
+            ``loss_weight``. Defaults to ``None``.
+        overlap (bool): Use the overlap-aware (multi-hot) path. Defaults to
+            ``False``.
+        membership_key (str): ``input_dict`` key for the multi-hot membership
+            matrix (overlap mode). Defaults to ``"inst_pe"``.
+        valid_key (str): ``input_dict`` key for the per-event ring-valid mask
+            (overlap mode). Defaults to ``"ring_valid"``.
+        mask_pe_thresh (float): Threshold turning membership PE into binary masks
+            (overlap mode). Defaults to ``0.0``.
+        noobj_mask_loss_weight (float): Weight pushing unmatched query masks
+            toward empty (``0`` disables). Defaults to ``0.0``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import torch
+            >>> from pimm.models.losses.instance_unified_fast import FastUnifiedInstanceLoss
+            >>> # non-overlap mode with one categorical per-query head ("pid")
+            >>> crit = FastUnifiedInstanceLoss(
+            ...     truth_label="instance",
+            ...     query_heads=[dict(name="pid", kind="categorical")])
+            >>> # pred needs pred_masks plus pred_<name> for each query head
+            >>> pred = {"pred_masks": [torch.randn(8, 50)],
+            ...         "pred_pid": [torch.randn(8, 5)]}
+            >>> inst = torch.zeros(50, dtype=torch.long)
+            >>> inst[10:30] = 1; inst[30:50] = 2
+            >>> input_dict = {"instance": inst.view(-1, 1),
+            ...               "pid": torch.randint(0, 5, (50, 1))}
+            >>> loss, comp = crit(pred, input_dict)   # scalar loss + diagnostics dict
+            >>> "pid" in comp                         # one scalar per query head
+            True
+            >>> # overlap=True instead expects a multi-hot membership matrix
+            >>> # (membership_key, e.g. "inst_pe") gated by valid_key ("ring_valid").
+    """
 
     def __init__(
         self,
