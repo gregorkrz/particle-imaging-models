@@ -81,6 +81,8 @@ class PoLArMAE(PointModel):
         loss_weights: Optional[Dict[str, float]] = None,
         transformer_kwargs: Optional[dict] = None,
         tokenizer_kwargs: Optional[dict] = None,
+        decoder_use_kv: bool = True,
+        patch_encoder_kwargs: Optional[dict] = None,
     ):
         super().__init__()
 
@@ -106,7 +108,7 @@ class PoLArMAE(PointModel):
         # --- Encoder & Decoder ---
         self.encoder = make_transformer(arch, use_kv=False, **transformer_kwargs)
         self.decoder = make_transformer(
-            decoder_arch, use_kv=True, **decoder_kwargs.get("transformer_kwargs", {}),
+            decoder_arch, use_kv=decoder_use_kv, **decoder_kwargs.get("transformer_kwargs", {}),
         )
 
         # --- Loss heads ---
@@ -115,10 +117,15 @@ class PoLArMAE(PointModel):
 
         self.increase_dim = nn.Conv1d(embed_dim, self.mae_channels * group_max_points, 1)
 
-        self.equivariant_patch_encoder = MaskedMiniPointNet(
-            channels=3, feature_dim=96, hidden1=64, hidden2=64, equivariant=True,
-        )
-        self.energy_decoder = nn.Conv1d(embed_dim + 96, group_max_points, 1)
+        # Equivariant patch encoder for the energy-infilling head. Defaults match
+        # pimm-native; `patch_encoder_kwargs` (feature_dim/hidden1/hidden2/
+        # pos_enc_style) lets a config reproduce the original PoLAr-MAE checkpoint.
+        pe_cfg = dict(channels=3, feature_dim=96, hidden1=64, hidden2=64,
+                      equivariant=True, pos_enc_style="mlp")
+        if patch_encoder_kwargs:
+            pe_cfg.update(patch_encoder_kwargs)
+        self.equivariant_patch_encoder = MaskedMiniPointNet(**pe_cfg)
+        self.energy_decoder = nn.Conv1d(embed_dim + pe_cfg["feature_dim"], group_max_points, 1)
 
         logger.info(
             f"PoLAr-MAE-Native: arch={arch}, voxel={voxel_size}, "

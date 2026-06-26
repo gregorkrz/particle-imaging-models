@@ -17,10 +17,13 @@ from pimm.export.checkpoint import (
     remap_state_dict_keys,
 )
 from pimm.utils.checkpoints import (
+    EXPORT_CONFIG_NAME,
+    EXPORT_CONFIG_READ_NAMES,
     EXPORT_WEIGHT_NAMES,
     configure_hf_cache,
     is_remote_weight,
     parse_hf_uri,
+    resolve_remote_weight,
 )
 from pimm.utils.config import Config
 from pimm.utils.path import split_checkpoint_weight_file
@@ -179,7 +182,7 @@ def _training_config_from_run(checkpoint_path: Optional[Path]) -> Optional[Dict[
     run_root = _find_run_root(checkpoint_path)
     if run_root is None:
         return None
-    for name in ("resolved_config.json", "training_config.json"):
+    for name in EXPORT_CONFIG_READ_NAMES:
         candidate = run_root / name
         if candidate.is_file():
             return _read_json(candidate)
@@ -190,9 +193,14 @@ def _training_config_from_run(checkpoint_path: Optional[Path]) -> Optional[Dict[
 
 
 def _model_config_from_export(directory: PathLike) -> Optional[Dict[str, Any]]:
-    """Read the saved model config from an export's ``training_config.json``."""
-    candidate = Path(directory) / "training_config.json"
-    if not candidate.is_file():
+    """Read the saved model config from an export's ``config.json`` (or the
+    legacy ``training_config.json``)."""
+    directory = Path(directory)
+    candidate = next(
+        (directory / name for name in EXPORT_CONFIG_READ_NAMES if (directory / name).is_file()),
+        None,
+    )
+    if candidate is None:
         return None
     data = _read_json(candidate)
     if not isinstance(data, dict):
@@ -229,7 +237,7 @@ def _infer_model_config(
         candidate_dirs.append(checkpoint_path.parent)
 
     for root in candidate_dirs:
-        for name in ("model_config.json", "resolved_config.json", "training_config.json"):
+        for name in EXPORT_CONFIG_READ_NAMES:
             candidate = root / name
             if candidate.is_file():
                 return _extract_model_config(_read_json(candidate))
@@ -383,7 +391,7 @@ def save_pretrained(
         # Redact site-specific absolute paths so the published config does not
         # leak the cluster layout and a rebuilt model never re-loads a stale path.
         _write_json(
-            save_dir / "training_config.json",
+            save_dir / EXPORT_CONFIG_NAME,
             _sanitize_config(_to_plain_data(training_config)),
         )
 
@@ -407,8 +415,15 @@ def _resolve_pretrained_path(
     # Accept the same hf:// scheme used by training `weight=` references, so
     # from_pretrained("hf://ns/name[@rev]") works like from_pretrained("ns/name").
     if is_remote_weight(name):
-        repo_id, uri_revision, _ = parse_hf_uri(name)
+        repo_id, uri_revision, filename = parse_hf_uri(name)
         revision = revision or uri_revision
+        # An explicit in-repo file (e.g. hf://ns/name/panda_base.pth) names a
+        # single weight file -- including raw .pth checkpoints that the export
+        # snapshot patterns below would never fetch. Delegate to the warm-start
+        # resolver, which honors the filename and returns just that file.
+        if filename:
+            rev = f"@{revision}" if revision else ""
+            return Path(resolve_remote_weight(f"hf://{repo_id}{rev}/{filename}"))
     else:
         repo_id = name
     try:
@@ -425,9 +440,19 @@ def _resolve_pretrained_path(
         repo_id=repo_id,
         cache_dir=str(cache_dir) if cache_dir is not None else None,
         revision=revision,
-        allow_patterns=[*EXPORT_WEIGHT_NAMES, "training_config.json", "README.md"],
+        allow_patterns=[*EXPORT_WEIGHT_NAMES, *EXPORT_CONFIG_READ_NAMES, "README.md"],
     )
-    return Path(downloaded)
+    snapshot = Path(downloaded)
+    # A consolidated export carries its weights (and config) in the snapshot dir.
+    # A repo of raw checkpoints (no model.safetensors/model.bin) yields a snapshot
+    # with no usable weights -- fall back to the warm-start resolver, which picks
+    # and fetches the single raw .pth so the bare-repo form also resolves.
+    if is_remote_weight(name) and not any(
+        (snapshot / candidate).is_file() for candidate in EXPORT_WEIGHT_NAMES
+    ):
+        rev = f"@{revision}" if revision else ""
+        return Path(resolve_remote_weight(f"hf://{repo_id}{rev}"))
+    return snapshot
 
 
 def from_pretrained(
@@ -620,7 +645,7 @@ def push_to_hub(
             folder_path=str(export_dir),
             commit_message=commit_message,
             revision=revision,
-            allow_patterns=[*EXPORT_WEIGHT_NAMES, "training_config.json", "README.md"],
+            allow_patterns=[*EXPORT_WEIGHT_NAMES, *EXPORT_CONFIG_READ_NAMES, "README.md"],
         )
     finally:
         if temp_dir is not None:
