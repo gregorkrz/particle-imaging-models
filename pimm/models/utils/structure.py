@@ -29,17 +29,23 @@ class Point(Dict):
 
     - "coord": original coordinate of point cloud;
     - "grid_coord": grid coordinate for specific grid size (related to GridSampling);
-    Point also support the following optional attributes:
+
+    Point also supports the following optional attributes:
+
     - "offset": if not exist, initialized as batch size is 1;
     - "batch": if not exist, initialized as batch size is 1;
     - "feat": feature of point cloud, default input of model;
     - "grid_size": Grid size of point cloud (related to GridSampling);
-    (related to Serialization)
-    - "serialized_depth": depth of serialization, 2 ** depth * grid_size describe the maximum of point cloud range;
+
+    Related to serialization:
+
+    - "serialized_depth": depth of serialization, ``2 ** depth * grid_size`` describes the maximum of point cloud range;
     - "serialized_code": a list of serialization codes;
     - "serialized_order": a list of serialization order determined by code;
     - "serialized_inverse": a list of inverse mapping determined by code;
-    (related to Sparsify: SpConv)
+
+    Related to sparsify (SpConv):
+
     - "sparse_shape": Sparse shape for Sparse Conv Tensor;
     - "sparse_conv_feat": SparseConvTensor init with information provide by Point;
     """

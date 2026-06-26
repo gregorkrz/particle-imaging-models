@@ -41,38 +41,74 @@ from .readers.jaxtpc_corr_reader import JAXTPCCorrReader
 
 @DATASETS.register_module()
 class JAXTPCDataset(Dataset):
-    """Multimodal dataset for LArTPC detector simulation output.
+    """Multimodal LArTPC simulation dataset over co-indexed JAXTPC HDF5 files.
 
-    Parameters
-    ----------
-    data_root : str
-        Root directory with seg/, resp/, corr/, labl/ subdirectories.
-    split : str
-        Split name for file discovery.
-    transform : list[dict]
-        Transform pipeline config.
-    modalities : tuple[str]
-        Which to load: 'seg', 'resp', 'labl', 'corr'.
-    dataset_name : str
-        File prefix (e.g., 'sim' for 'sim_seg_0000.h5').
-    volume : int or None
-        Load only this volume index. None = all volumes.
-    label_key : str
-        Which label to use as 'segment': 'particle', 'cluster', 'interaction'.
-    min_deposits : int
-        Minimum 3D deposits per event (seg reader filter).
-    max_len : int
-        Cap on dataset length (-1 = unlimited).
-    loop : int
-        Dataset repetition per epoch.
-    include_physics : bool
-        Whether seg reader loads dx, theta, phi, charge, photons, etc.
-    label_keys : list or None
-        Which label datasets to load from labl files.
-    test_mode : bool
-        Enable test-time transforms.
-    test_cfg : object
-        Test config (voxelize, crop, post_transform, aug_transform).
+    Reads from event-aligned shard families produced by JAXTPC: ``seg`` (3D
+    deposits), ``resp`` (2D wire-plane signals), ``corr`` (3D-to-2D
+    correspondence), and ``labl`` (track-id-to-label lookup tables). Which
+    modality owns the standard ``coord``/``energy``/``segment``/``instance`` keys
+    depends on what is loaded:
+
+    * ``seg`` present: ``coord`` is the 3D deposit cloud ``(N, 3)``; ``resp``/
+      ``corr`` keys stay namespaced (``resp_*``/``corr_*``).
+    * ``seg`` absent, ``corr`` + ``labl`` present: ``coord`` is the labelled 2D
+      ``(E, 2)`` correspondence cloud with ``plane_id``.
+    * ``seg`` absent, ``resp`` present (no ``corr``): all planes are merged into a
+      2D ``coord`` ``(M, 2)`` with ``plane_id`` (no labels).
+
+    After collation a batch adds ``offset``. Registered as ``JAXTPCDataset`` --
+    use as ``type`` under ``data.train``/``data.val``/``data.test``.
+
+    Args:
+        data_root (str): Root directory holding ``seg/``, ``resp/``, ``corr/``,
+            ``labl/`` subdirectories.
+        split (str): Split name used for shard discovery. Defaults to ``"train"``.
+        transform (list[dict]): List of transform configs (NOT a prebuilt
+            ``Compose``). Defaults to ``None``.
+        modalities (tuple[str]): Which modalities to load, any of ``"seg"``,
+            ``"resp"``, ``"corr"``, ``"labl"``. Defaults to ``("seg",)``.
+        dataset_name (str): Shard filename prefix (e.g. ``"sim"`` for
+            ``sim_seg_0000.h5``). Defaults to ``"sim"``.
+        volume (int | None): Load only this detector volume's planes; ``None``
+            loads all volumes. Defaults to ``None``.
+        label_key (str): Which label table to use as ``segment``: ``"particle"``,
+            ``"cluster"``, or ``"interaction"``. Defaults to ``"particle"``.
+        min_deposits (int): Minimum 3D deposits per event (seg reader filter).
+            Defaults to ``0``.
+        max_len (int): Cap on event count before the loop multiplier (-1 = no
+            cap). Defaults to ``-1``.
+        loop (int): Train-time epoch multiplier. Defaults to ``1``.
+        include_physics (bool): Whether the seg reader also loads physics columns
+            (``dx``, ``theta``, ``phi``, ``charge``, ``photons``, ...). Defaults
+            to ``True``.
+        label_keys (list | None): Which label datasets to read from ``labl``
+            files; ``None`` uses the reader default. Defaults to ``None``.
+        test_mode (bool): Emit voxelized/augmented test fragments and force
+            ``loop = 1``. Defaults to ``False``.
+        test_cfg (object): Test config (``voxelize``, ``crop``, ``post_transform``,
+            ``aug_transform``); required when ``test_mode``. Defaults to ``None``.
+
+    Note:
+        The dataset length is the minimum event count across the active readers
+        (they must be co-indexed). ``modalities=("resp", "labl")`` without
+        ``corr`` produces no ``segment`` (resp pixels can't be mapped to
+        track-ids without ``corr``); a warning is logged. Loader settings
+        (``batch_size``, ``num_worker``) live at the top level of the config.
+
+    Example:
+        .. code-block:: python
+
+            >>> from pimm.datasets.builder import build_dataset
+            >>> # 3D segmentation (data root not in this env -> shown as config)
+            >>> ds = build_dataset(dict(type="JAXTPCDataset",
+            ...     modalities=("seg", "labl"), label_key="particle",
+            ...     data_root="data/jaxtpc", transform=[]))   # doctest: +SKIP
+            >>> sample = ds[0]                                 # doctest: +SKIP
+            >>> # seg+labl sample keys: coord (N, 3), energy (N, 1),
+            >>> #   segment (N,) (per-point label from labl), track_ids, volume_id,
+            >>> #   plus seg physics columns (dx, theta, phi, ...), name, split
+            >>> # 2D corr+labl (no seg): coord (E, 2), energy, segment, instance,
+            >>> #   plane_id, name, split  (corr entries become labelled points)
     """
 
     def __init__(

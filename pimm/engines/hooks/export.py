@@ -47,7 +47,73 @@ from .default import HookBase
 
 @HOOKS.register_module()
 class PushToHub(HookBase):
-    """Push checkpoints to the Hugging Face Hub at end of training and/or on some interval."""
+    """Push model checkpoints to the Hugging Face Hub during and/or after training.
+
+    Entirely opt-in. By default it uploads the raw ``model_best`` checkpoint once
+    at the end of training (``weights_only=True``), so it loads back
+    byte-identically via ``weight=hf://<repo>/model_best.pth``; set
+    ``weights_only=False`` to push a consolidated ``pimm export`` artifact
+    instead. For cross-cluster sync it can also push periodically: with
+    ``on_best=True`` it pushes ``model_best`` in ``after_step`` whenever the best
+    metric improves, and with ``every_n_epochs`` set it pushes the rolling
+    checkpoint in ``after_epoch`` every N epochs. The final end-of-training push
+    happens in ``after_train``, which also drains any in-flight background
+    uploads. Registered as ``PushToHub``.
+
+    Args:
+        repo_id (str): Target Hub repo, e.g. ``"youngsm/sonata-pilarnet-L"``.
+        checkpoint (str): Which checkpoint to push at end of training, e.g.
+            ``"model_best"`` or ``"last"``/``"model_last"`` (the latter resolve
+            to the newest rolling checkpoint). Defaults to ``"model_best"``.
+        weights_only (bool): If ``True``, upload the raw checkpoint file; if
+            ``False``, build and push a consolidated ``pimm export`` artifact.
+            Defaults to ``True``.
+        private (bool): Create the repo as private if it does not exist. Defaults
+            to ``True``.
+        token (str, optional): Hugging Face token; falls back to the ambient
+            credential when ``None``. Defaults to ``None``.
+        revision (str, optional): Target branch/revision for uploads. Defaults
+            to ``None``.
+        name (str, optional): Destination filename in the repo for raw uploads;
+            defaults to the source file's basename when ``None``. Defaults to
+            ``None``.
+        on_train_end (bool): Push ``checkpoint`` in ``after_train``. Defaults to
+            ``True``.
+        on_best (bool): Push ``model_best`` in ``after_step`` whenever
+            ``best_metric_value`` improves. Defaults to ``False``.
+        every_n_epochs (int, optional): Push the rolling checkpoint in
+            ``after_epoch`` every N epochs. ``None`` disables. Defaults to
+            ``None``.
+        background (bool): Run periodic raw uploads in a background thread so
+            they never block the training step (uploads to the same path are
+            serialized). The final ``after_train`` push is always blocking.
+            Defaults to ``True``.
+
+    Note:
+        Uploads run on rank 0 only, and failures are logged but never crash the
+        run. Place ``PushToHub`` **after** the checkpoint saver in the ``hooks``
+        list so the files it reads are already written. Repeatedly uploading
+        large checkpoints to the same path accumulates LFS blobs in the repo's
+        history, so prefer a dedicated repo and/or a long ``every_n_epochs``
+        cadence for frequent pushes.
+
+    Example:
+        Add to ``cfg.hooks`` after the checkpoint saver; by default it uploads
+        ``model_best`` to the Hub once at the end of training:
+
+        .. code-block:: python
+
+            hooks = [
+                dict(type="CheckpointSaver"),
+                dict(type="PushToHub", repo_id="youngsm/sonata-pilarnet-L",
+                     private=True),
+            ]
+            # → in after_train (rank 0, blocking) uploads
+            #   <save_path>/model/model_best.pth to
+            #   hf://youngsm/sonata-pilarnet-L/model_best.pth; with on_best=True it
+            #   also pushes model_best in after_step whenever best_metric_value
+            #   improves, and every_n_epochs=N pushes the rolling ckpt in after_epoch
+    """
 
     def __init__(
         self,

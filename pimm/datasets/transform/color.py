@@ -5,6 +5,22 @@ from .common import *
 
 @TRANSFORMS.register_module()
 class NormalizeColor(object):
+    """Scale per-point colors from ``[0, 255]`` into ``[0, 1]``.
+
+    Reads and overwrites ``data_dict["color"]`` in place by dividing it by
+    ``255``. A no-op when no ``"color"`` key is present. Registered as
+    ``NormalizeColor`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> data = {"color": np.array([[0., 128., 255.]], dtype="f4")}
+            >>> NormalizeColor()(data)["color"].round(3)
+            array([[0.   , 0.502, 1.   ]], dtype=float32)  # divided by 255 -> [0, 1]
+    """
+
     def __call__(self, data_dict):
         if "color" in data_dict.keys():
             data_dict["color"] = data_dict["color"] / 255
@@ -12,6 +28,45 @@ class NormalizeColor(object):
 
 @TRANSFORMS.register_module()
 class LogTransform(object):
+    """Compress scalar features (e.g. energy) onto ``[-1, 1]``.
+
+    For each key in ``keys`` that is present, replaces the value with either a
+    logarithmic (``log=True``) or linear (``log=False``) rescaling onto
+    ``[-1, 1]`` derived from ``min_val``/``max_val``. The log map is
+    ``2 * (log10(x + min_val) - log10(min_val)) / (log10(max_val + min_val) -
+    log10(min_val)) - 1``. Raises ``ValueError`` if a requested key is missing.
+    Registered as ``LogTransform`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        min_val (float): Lower reference value of the input range; also the
+            additive offset inside the log. Defaults to ``1.0e-2``.
+        max_val (float): Upper reference value of the input range. Defaults to
+            ``20.0``.
+        log (bool): If ``True`` use the logarithmic map, otherwise the linear
+            map. Defaults to ``True``.
+        keys (tuple): Keys to transform; a single string is wrapped into a
+            tuple. Defaults to ``("energy",)``.
+        clip (bool): If ``True``, clip inputs before mapping (to
+            ``[0, max_val]`` for log, ``[min_val, max_val]`` for linear).
+            Defaults to ``False``.
+
+    Note:
+        The correct ``min_val`` matters: for PoLAr-MAE/PILArNet energy it must
+        equal the energy threshold (e.g. ``0.13``), not ``0.01`` — a wrong
+        value degrades downstream results.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> data = {"energy": np.array([[0.13], [1.0], [20.0]], dtype="f4")}
+            >>> LogTransform(min_val=0.13, max_val=20.0)(data)["energy"].round(3)
+            array([[-0.725],
+                   [-0.142],
+                   [ 1.   ]])  # log-compressed: min_val->-1, max_val->+1
+    """
+
     def __init__(self, min_val=1.0e-2, max_val=20.0, log=True, keys=("energy",), clip=False):
         self.min_val = min_val
         self.max_val = max_val
@@ -49,6 +104,38 @@ class LogTransform(object):
 
 @TRANSFORMS.register_module()
 class RelativeLogNormalize(object):
+    """Per-event relative log normalization (e.g. for hit times).
+
+    For each key in ``keys``, subtracts the per-event minimum, clips to
+    ``[0, max_val]``, applies ``log1p(x / scale)`` normalized by
+    ``log1p(max_val / scale)``, then maps onto ``[out_min, out_max]``. Useful
+    for trigger-offset-removed timing where only relative spacing matters.
+    Raises ``ValueError`` if a requested key is missing. Registered as
+    ``RelativeLogNormalize`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        keys (tuple): Keys to transform; a single string is wrapped into a
+            tuple. Defaults to ``("time",)``.
+        scale (float): Log soft-knee scale (``log1p(x / scale)``); must be
+            positive. Defaults to ``50.0``.
+        max_val (float): Upper clip applied before the log; must be positive.
+            Defaults to ``4000.0``.
+        out_min (float): Lower bound of the output range. Defaults to ``-1.0``.
+        out_max (float): Upper bound of the output range; must exceed
+            ``out_min``. Defaults to ``1.0``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> data = {"time": np.array([[100.], [150.], [4100.]], dtype="f4")}
+            >>> RelativeLogNormalize(keys=("time",), scale=50.0)(data)["time"].round(3)
+            array([[-1.   ],
+                   [-0.685],
+                   [ 1.   ]], dtype=float32)  # per-event min->-1, clipped max->+1
+    """
+
     def __init__(
         self,
         keys=("time",),
@@ -91,6 +178,28 @@ class RelativeLogNormalize(object):
 
 @TRANSFORMS.register_module()
 class MomentumTransform(object):
+    """Log10-compress strictly-positive momentum values.
+
+    For each key in ``keys`` that is present, replaces positive entries with
+    ``log10(clip(x, 1e-6, None))`` while leaving non-positive entries
+    unchanged (so sentinel/zero values pass through). Registered as
+    ``MomentumTransform`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        keys (tuple): Keys to transform. Defaults to ``("momentum",)``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> data = {"momentum": np.array([[0.0], [1.0], [100.0]], dtype="f4")}
+            >>> MomentumTransform()(data)["momentum"].round(3)
+            array([[0.],
+                   [0.],
+                   [2.]], dtype=float32)  # positive -> log10; 0 sentinel passes through
+    """
+
     def __init__(self, keys=("momentum",)):
         self.keys = keys
 
@@ -104,6 +213,33 @@ class MomentumTransform(object):
 
 @TRANSFORMS.register_module()
 class ChromaticAutoContrast(object):
+    """Randomly auto-contrast the per-point RGB color.
+
+    With probability ``p`` and when ``"color"`` is present, rescales each RGB
+    channel to span ``[0, 255]`` (per-channel min/max stretch) and blends the
+    result with the original color by ``blend_factor``; modifies
+    ``data_dict["color"][:, :3]`` in place. Registered as
+    ``ChromaticAutoContrast`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        p (float): Probability of applying the transform. Defaults to ``0.2``.
+        blend_factor (float, optional): Blend weight toward the contrasted
+            color; if ``None`` a fresh ``U(0, 1)`` value is drawn per call.
+            Defaults to ``None``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"color": np.array([[50., 100., 150.],
+            ...                            [100., 150., 200.]], dtype="f4")}
+            >>> ChromaticAutoContrast(p=1.0)(data)["color"].round(2)
+            array([[ 14.24,  28.48,  42.72],
+                   [210.85, 225.09, 239.34]], dtype=float32)  # stretched toward [0, 255]
+    """
+
     def __init__(self, p=0.2, blend_factor=None):
         self.p = p
         self.blend_factor = blend_factor
@@ -124,6 +260,29 @@ class ChromaticAutoContrast(object):
 
 @TRANSFORMS.register_module()
 class ChromaticTranslation(object):
+    """Randomly shift all RGB channels by a shared offset.
+
+    With probability ``p`` and when ``"color"`` is present, adds the same random
+    per-channel offset (drawn in ``+/- 255 * ratio``) to every point, then clips
+    to ``[0, 255]``; modifies ``data_dict["color"][:, :3]`` in place. Registered
+    as ``ChromaticTranslation`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        p (float): Probability of applying the transform. Defaults to ``0.95``.
+        ratio (float): Fraction of the full ``255`` range bounding the random
+            offset magnitude. Defaults to ``0.05``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"color": np.array([[100., 100., 100.]], dtype="f4")}
+            >>> ChromaticTranslation(p=1.0, ratio=0.1)(data)["color"].round(2)
+            array([[110.97, 105.24, 102.29]], dtype=float32)  # shared per-channel offset added
+    """
+
     def __init__(self, p=0.95, ratio=0.05):
         self.p = p
         self.ratio = ratio
@@ -136,6 +295,31 @@ class ChromaticTranslation(object):
 
 @TRANSFORMS.register_module()
 class EnergeticTranslation(object):
+    """Randomly shift per-point energy by a shared scalar offset.
+
+    Energy analogue of :class:`ChromaticTranslation`. With probability ``p`` and
+    when ``"energy"`` is present, adds one random offset (drawn in
+    ``+/- ratio``) to every point's energy, then clips to ``[-1, 1]`` (so it
+    expects already log/linear-normalized energy); modifies
+    ``data_dict["energy"]`` in place. Registered as ``EnergeticTranslation`` —
+    use this string as the ``type`` in a ``transform=[...]`` config list.
+
+    Args:
+        p (float): Probability of applying the transform. Defaults to ``0.95``.
+        ratio (float): Half-width of the uniform offset added to energy.
+            Defaults to ``0.05``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"energy": np.array([[0.0], [0.5]], dtype="f4")}
+            >>> EnergeticTranslation(p=1.0, ratio=0.1)(data)["energy"].round(4)
+            array([[0.043 ],
+                   [0.543 ]], dtype=float32)  # one shared offset added to all points
+    """
+
     def __init__(self, p=0.95, ratio=0.05):
         self.p = p
         self.ratio = ratio
@@ -148,6 +332,29 @@ class EnergeticTranslation(object):
 
 @TRANSFORMS.register_module()
 class ChromaticJitter(object):
+    """Add independent per-point Gaussian noise to RGB channels.
+
+    With probability ``p`` and when ``"color"`` is present, adds zero-mean
+    Gaussian noise with standard deviation ``std * 255`` independently per point
+    and per channel, then clips to ``[0, 255]``; modifies
+    ``data_dict["color"][:, :3]`` in place. Registered as ``ChromaticJitter`` —
+    use this string as the ``type`` in a ``transform=[...]`` config list.
+
+    Args:
+        p (float): Probability of applying the transform. Defaults to ``0.95``.
+        std (float): Noise standard deviation as a fraction of the ``255``
+            range. Defaults to ``0.005``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"color": np.array([[100., 100., 100.]], dtype="f4")}
+            >>> ChromaticJitter(p=1.0, std=0.05)(data)["color"].round(2)
+            array([[109.46, 119.8 ,  71.08]], dtype=float32)  # per-point per-channel Gaussian noise
+    """
+
     def __init__(self, p=0.95, std=0.005):
         self.p = p
         self.std = std
@@ -163,6 +370,32 @@ class ChromaticJitter(object):
 
 @TRANSFORMS.register_module()
 class EnergyJitter(object):
+    """Apply multiplicative per-point jitter to energy.
+
+    With probability ``p`` and when ``"energy"`` is present, scales each point's
+    energy by ``1 + U(-jitter_ratio, jitter_ratio)`` then lower-clips to
+    ``min_val``; modifies ``data_dict["energy"]`` in place. Registered as
+    ``EnergyJitter`` — use this string as the ``type`` in a ``transform=[...]``
+    config list.
+
+    Args:
+        p (float): Probability of applying the transform. Defaults to ``0.5``.
+        jitter_ratio (float): Half-width of the multiplicative jitter applied to
+            energy. Defaults to ``0.005``.
+        min_val (float): Lower clip applied after jittering. Defaults to
+            ``0.0``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"energy": np.array([[1.0], [2.0]], dtype="f4")}
+            >>> EnergyJitter(p=1.0, jitter_ratio=0.1)(data)["energy"].round(4)
+            array([[1.043 ],
+                   [2.0411]], dtype=float32)  # each point scaled by 1 +/- jitter
+    """
+
     def __init__(self, p=0.5, jitter_ratio=0.005, min_val=0.0):
         self.p = p
         self.jitter_ratio = jitter_ratio
@@ -181,6 +414,26 @@ class EnergyJitter(object):
 
 @TRANSFORMS.register_module()
 class RandomColorGrayScale(object):
+    """Randomly convert per-point RGB color to grayscale.
+
+    With probability ``p``, replaces ``data_dict["color"]`` with its luminance
+    (ITU-R ``0.2989 R + 0.587 G + 0.114 B``) broadcast back to 3 channels.
+    Requires ``"color"`` with at least 3 channels. Registered as
+    ``RandomColorGrayScale`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        p (float): Probability of applying the grayscale conversion.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> data = {"color": np.array([[255., 0., 0.]], dtype="f4")}
+            >>> RandomColorGrayScale(p=1.0)(data)["color"].round(2)
+            array([[76.22, 76.22, 76.22]], dtype=float32)  # 0.2989*R luminance, 3 channels
+    """
+
     def __init__(self, p):
         self.p = p
 
@@ -212,8 +465,37 @@ class RandomColorGrayScale(object):
 
 @TRANSFORMS.register_module()
 class RandomColorJitter(object):
-    """
-    Random Color Jitter for 3D point cloud (refer torchvision)
+    """Randomly jitter brightness, contrast, saturation, and hue of point colors.
+
+    A torchvision-style ``ColorJitter`` for 3D point-cloud ``"color"``. Each
+    call draws a random order over the four adjustments and, for each enabled
+    one, applies it with probability ``p`` using a factor sampled from the range
+    implied by the constructor argument; modifies ``data_dict["color"]`` in
+    place. Registered as ``RandomColorJitter`` — use this string as the ``type``
+    in a ``transform=[...]`` config list.
+
+    Args:
+        brightness (float or tuple): Either a non-negative magnitude ``b``
+            giving the factor range ``[max(0, 1 - b), 1 + b]`` or an explicit
+            ``(min, max)`` pair. ``0`` disables. Defaults to ``0``.
+        contrast (float or tuple): Same convention as ``brightness`` for
+            contrast. Defaults to ``0``.
+        saturation (float or tuple): Same convention as ``brightness`` for
+            saturation. Defaults to ``0``.
+        hue (float or tuple): Either a magnitude ``h`` (``0 <= h <= 0.5``)
+            giving the range ``[-h, h]`` or an explicit ``(min, max)`` within
+            ``[-0.5, 0.5]``. ``0`` disables. Defaults to ``0``.
+        p (float): Per-adjustment probability of application. Defaults to
+            ``0.95``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"color": np.array([[100., 150., 200.]], dtype="f4")}
+            >>> RandomColorJitter(brightness=0.4, p=1.0)(data)["color"].round(2)
+            array([[103.91, 155.86, 207.81]], dtype=float32)  # brightness factor ~1.04 applied
     """
 
     def __init__(self, brightness=0, contrast=0, saturation=0, hue=0, p=0.95):
@@ -395,6 +677,31 @@ class RandomColorJitter(object):
 
 @TRANSFORMS.register_module()
 class HueSaturationTranslation(object):
+    """Randomly translate hue and scale saturation of point colors.
+
+    When ``"color"`` is present, converts ``data_dict["color"][:, :3]`` to HSV,
+    adds a random hue offset in ``+/- hue_max`` (wrapped modulo 1) and multiplies
+    saturation by ``1 + U(-saturation_max, saturation_max)`` (clipped to
+    ``[0, 1]``), then converts back to RGB and clips to ``[0, 255]``; modifies
+    the color in place. Registered as ``HueSaturationTranslation`` — use this
+    string as the ``type`` in a ``transform=[...]`` config list.
+
+    Args:
+        hue_max (float): Half-width of the random hue offset (HSV hue units in
+            ``[0, 1]``). Defaults to ``0.5``.
+        saturation_max (float): Half-width of the random saturation scaling
+            factor about 1. Defaults to ``0.2``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> np.random.seed(0)
+            >>> data = {"color": np.array([[200., 100., 50.]], dtype="f4")}
+            >>> HueSaturationTranslation(hue_max=0.5, saturation_max=0.2)(data)["color"]
+            array([[200., 139.,  37.]], dtype=float32)  # hue rotated, saturation rescaled
+    """
+
     @staticmethod
     def rgb_to_hsv(rgb):
         # Translated from source of colorsys.rgb_to_hsv
@@ -462,6 +769,28 @@ class HueSaturationTranslation(object):
 
 @TRANSFORMS.register_module()
 class RandomColorDrop(object):
+    """Randomly drop (zero out or attenuate) per-point color.
+
+    With probability ``p`` and when ``"color"`` is present, multiplies
+    ``data_dict["color"]`` by ``color_augment`` in place (``0.0`` drops color
+    entirely), forcing the model not to rely solely on color. Registered as
+    ``RandomColorDrop`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        p (float): Probability of dropping color. Defaults to ``0.2``.
+        color_augment (float): Multiplier applied to color when dropped (``0.0``
+            zeroes it). Defaults to ``0.0``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> data = {"color": np.array([[100., 150., 200.]], dtype="f4")}
+            >>> RandomColorDrop(p=1.0, color_augment=0.0)(data)["color"]
+            array([[0., 0., 0.]], dtype=float32)  # color zeroed out (dropped)
+    """
+
     def __init__(self, p=0.2, color_augment=0.0):
         self.p = p
         self.color_augment = color_augment

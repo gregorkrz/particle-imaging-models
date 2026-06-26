@@ -13,7 +13,64 @@ def _get_writer_step(trainer):
 
 @HOOKS.register_module()
 class PretrainEvaluator(HookBase):
-    """Evaluate frozen pretraining features with downstream linear probes."""
+    """Evaluate frozen pretraining features with downstream linear probes.
+
+    On rank 0, extracts per-point backbone features from a budget of validation
+    events (the first ``max_train_events`` for probe training, the next
+    ``max_test_events`` for probe testing), then fits a grid of linear
+    classifiers (via ``LinearProbingTrainer``) for each configured label and
+    reports per-class and macro IoU / precision / recall / F1 plus a confusion
+    matrix. Handles Sonata (teacher backbone), standard backbones (PTv3),
+    fusion-export models, and models exposing ``encode()`` (Point-M2AE),
+    unrolling any ``pooling_parent`` chain to recover point-resolution features.
+    It publishes ``mF1`` of the (last-evaluated) label as the
+    checkpoint-selection metric (``current_metric_value`` = ``m_f1``,
+    ``current_metric_name`` = ``mF1``). Runs after every step when
+    ``every_n_steps > 0`` (when ``(global_iter + 1) % every_n_steps == 0``),
+    otherwise after each epoch; only when ``cfg.evaluate`` is true. Registered as
+    ``PretrainEvaluator`` (use as ``type`` in a ``hooks=[...]`` entry).
+
+    Args:
+        label (str | Sequence[str]): Label key(s) to probe; a string probes one
+            label, a sequence probes several. Defaults to ``"segment"``.
+        write_cls_iou (bool): Also log per-class IoU/F1/precision/recall to the
+            writer. Defaults to ``True``.
+        every_n_steps (int): Step cadence; ``0`` evaluates once per epoch.
+            Defaults to ``1``.
+        max_train_events (int): Number of events used to fit the linear probe.
+            Defaults to ``250``.
+        max_test_events (int): Number of events used to evaluate the probe.
+            Defaults to ``250``.
+        class_names (list | dict | None): Class names; a list (shared across
+            labels) or a per-label dict. Falls back to ``cfg.data.names``.
+            Defaults to ``None``.
+        prefix (str): Writer/metric prefix; the ``segment`` label uses the root
+            namespace. Defaults to ``""``.
+        train_config (dict | None): Config forwarded to ``LinearProbingTrainer``
+            (probe LR grid, epochs, etc.). Defaults to ``None``.
+
+    Note:
+        The selection metric is the linear-probe ``mF1`` (higher is better);
+        ``current_metric_name`` is only set on the first eval, while
+        ``current_metric_value`` is overwritten each eval. Evaluation runs on
+        rank 0 only; other ranks synchronize.
+
+    Example:
+        Add to ``cfg.hooks`` for SSL pretraining; it fits linear probes on frozen
+        backbone features and sets the selection metric:
+
+        .. code-block:: python
+
+            hooks = [
+                dict(type="PretrainEvaluator", label="segment",
+                     every_n_steps=1000, max_train_events=250,
+                     max_test_events=250),
+            ]
+            # → every 1000 steps (rank 0) trains a linear probe on 250 events / tests
+            #   on the next 250 and logs  val/mIoU, val/mPrecision, val/mRecall,
+            #   val/mF1  (+ per-class IoU/F1 with write_cls_iou), setting the
+            #   checkpoint-selection metric to mF1
+    """
 
     def __init__(
         self,

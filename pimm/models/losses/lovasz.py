@@ -272,6 +272,46 @@ def mean(values, ignore_nan=False, empty=0):
 
 @LOSSES.register_module()
 class LovaszLoss(_Loss):
+    """Lovasz loss: a direct surrogate for the IoU (Jaccard) metric.
+
+    Optimizes the Lovasz extension of the Jaccard index
+    (`Berman et al. 2018 <https://arxiv.org/abs/1705.08790>`_). ``forward(y_pred,
+    y_true)`` takes ``y_pred`` of shape ``(N, C, ...)`` (logits; soft-maxed for
+    multiclass) and ``y_true`` of shape ``(N, ...)`` (class indices) and returns
+    the loss scaled by ``loss_weight``. Supports binary, multiclass, and
+    multilabel segmentation. Registered as ``LovaszLoss`` -- use in a
+    ``criteria=[...]`` list, typically paired with cross-entropy.
+
+    Args:
+        mode (str): Loss mode, one of ``"binary"``, ``"multiclass"``,
+            ``"multilabel"``.
+        class_seen (int | None): Optional restriction of which classes contribute
+            to the loss. Defaults to ``None``.
+        class_weights (dict[int, float] | torch.Tensor | list | None): Optional
+            per-class weights (dict from class index to weight, tensor, or list).
+            Defaults to ``None``.
+        per_image (bool): Compute the loss per image then average, instead of over
+            the whole batch. Defaults to ``False``.
+        ignore_index (int | None): Label marking ignored pixels. Defaults to
+            ``None``.
+        loss_weight (float): Global scale on the returned loss. Defaults to
+            ``1.0``.
+        penalize_pred (bool): Weight per-pixel errors by the predicted class
+            (rather than weighting the per-class loss). Defaults to ``False``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import torch
+            >>> from pimm.models.losses.builder import build_criteria
+            >>> crit = build_criteria([dict(type="LovaszLoss", mode="multiclass",
+            ...                              loss_weight=1.0)])
+            >>> pred = torch.randn(10, 3)              # (N=10 points, C=3 classes) logits
+            >>> target = torch.randint(0, 3, (10,))   # class indices
+            >>> crit(pred, target)                    # scalar Jaccard surrogate
+            tensor(0.7265)
+    """
+
     def __init__(
         self,
         mode: str,

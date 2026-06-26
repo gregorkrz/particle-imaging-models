@@ -11,8 +11,36 @@ from .builder import HOOKS
 
 
 class HookBase:
-    """
-    Base class for hooks that can be registered with :class:`TrainerBase`.
+    """Base class for all training hooks registered with the trainer.
+
+    A hook plugs custom behaviour into fixed points of the training loop. The
+    trainer calls each lifecycle method on every registered hook, in
+    registration order, at the corresponding point in the run. Subclasses
+    override only the methods they need; the defaults are no-ops. Every hook in
+    ``pimm`` derives from this class.
+
+    The lifecycle methods, in the order the trainer invokes them, are:
+
+    - ``modify_config(cfg)``: called once after all hooks are registered but
+      before the writer (W&B/TensorBoard) is built, so a hook may still mutate
+      the config (e.g. set ``cfg.wandb_run_name``).
+    - ``before_train()``: called once before the training loop starts.
+    - ``before_epoch()``: called at the start of every epoch.
+    - ``before_step()``: called before each training step (before the batch is
+      consumed by the model).
+    - ``after_step()``: called after each training step (after forward/backward).
+    - ``after_epoch()``: called at the end of every epoch.
+    - ``after_train()``: called once after the training loop finishes.
+
+    Note:
+        ``self.trainer`` is a weak reference (proxy) to the owning trainer,
+        assigned by the trainer at registration time. Through it a hook reaches
+        shared state such as ``trainer.model``, ``trainer.optimizer``,
+        ``trainer.storage``, ``trainer.writer``, ``trainer.logger``,
+        ``trainer.comm_info``, and ``trainer.cfg``. In distributed runs every
+        rank runs every hook, so guard rank-0-only side effects with
+        ``pimm.utils.comm.is_main_process()`` and keep any collective operations
+        consistent across ranks.
     """
 
     trainer = None  # A weak reference to the trainer object.
@@ -44,6 +72,34 @@ class HookBase:
 
 @HOOKS.register_module()
 class ModelHook(HookBase):
+    """Bridge that forwards lifecycle calls to a model implementing ``HookBase``.
+
+    Lets a model participate in the training loop as if it were a hook. In
+    ``before_train`` it resolves the underlying model (unwrapping the DDP
+    ``.module`` in distributed runs); if that model is itself a ``HookBase`` it
+    is bound as a weak proxy, otherwise a no-op ``HookBase`` stand-in is used.
+    Every subsequent lifecycle call (``before_epoch``, ``before_step``,
+    ``after_step``, ``after_epoch``, ``after_train``) is forwarded to the model.
+    Registered as ``ModelHook``.
+
+    Note:
+        ``modify_config`` is intentionally not forwarded — by the time hooks
+        run, the model is already built from the config. The bound model's
+        ``trainer`` attribute is set to the same trainer so it can reach shared
+        training state.
+
+    Example:
+        Add to ``cfg.hooks``; at each lifecycle point the trainer forwards the
+        call to the model so the model's own hook methods run inside the loop:
+
+        .. code-block:: python
+
+            hooks = [dict(type="ModelHook")]
+            # → in before_train binds the (DDP-unwrapped) model as a HookBase and
+            #   forwards before_epoch/before_step/after_step/after_epoch/after_train
+            #   to model.<same method> every step (modify_config is NOT forwarded)
+    """
+
     def before_train(self):
         if comm.get_world_size() > 1 and hasattr(self.trainer.model, 'module') and isinstance(
             self.trainer.model.module, HookBase

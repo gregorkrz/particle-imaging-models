@@ -32,35 +32,66 @@ from .readers.lucid_sensor_reader import LUCiDSensorReader
 
 @DATASETS.register_module()
 class LUCiDDataset(Dataset):
-    """Water Cherenkov detector dataset.
+    """Water Cherenkov detector dataset over co-indexed LUCiD HDF5 files.
 
-    Parameters
-    ----------
-    data_root : str
-        Root directory with seg/ and/or sensor/ subdirectories.
-    split : str
-        Split name for file discovery.
-    transform : list[dict]
-        Transform pipeline config.
-    modalities : tuple[str]
-        Which to load: 'seg', 'sensor'.
-    dataset_name : str
-        File prefix (e.g., 'wc' for 'wc_seg_0000.h5').
-    output_mode : str
-        How to format sensor data for the model:
-        - 'response': PMT point cloud with total PE/T features
-        - 'labels': sparse per-particle entries with instance/semantic labels
-        - 'separate': keep raw reader keys (pmt_coord, pmt_pe, pp_* keys)
-    include_labels : bool
-        Whether sensor reader loads per-particle decomposition.
-    pe_threshold : float
-        Minimum PE for sparsifying PE_per_particle.
-    min_segments : int
-        Minimum segments per event (seg reader filter).
-    max_len : int
-        Cap on dataset length.
-    loop : int
-        Dataset repetition per epoch.
+    Reads PMT sensor response and/or 3D track segments from event-aligned shard
+    families (``sensor/`` and/or ``seg/``) and emits flat dicts for the pimm
+    transform/collation pipeline. The public keys depend on ``output_mode`` for
+    the sensor modality: ``"response"`` emits one entry per PMT with ``coord``
+    (3D PMT position or a 1D sensor index), ``energy`` (total PE) and ``time``;
+    ``"labels"`` emits sparse per-particle entries with ``coord``, ``energy``,
+    ``segment`` (category) and ``instance`` (particle index); ``"separate"``
+    keeps the raw reader keys (``pmt_coord``, ``pmt_pe``, ``pp_*``). After
+    collation a batch adds ``offset``. Registered as ``LUCiDDataset`` -- use as
+    ``type`` under ``data.train``/``data.val``/``data.test``.
+
+    Args:
+        data_root (str): Root directory holding ``seg/`` and/or ``sensor/``
+            subdirectories.
+        split (str): Split name used for shard discovery. Defaults to ``""``.
+        transform (list[dict]): List of transform configs (NOT a prebuilt
+            ``Compose``). Defaults to ``None``.
+        modalities (tuple[str]): Which modalities to load, any of ``"sensor"``,
+            ``"seg"``. Defaults to ``("sensor",)``.
+        dataset_name (str): Shard filename prefix (e.g. ``"wc"`` for
+            ``wc_seg_0000.h5``). Defaults to ``"wc"``.
+        output_mode (str): Sensor output contract, one of ``"response"``,
+            ``"labels"``, ``"separate"`` (see above). Defaults to ``"response"``.
+        include_labels (bool): Whether the sensor reader loads the per-particle
+            decomposition (needed for ``output_mode="labels"``). Defaults to
+            ``True``.
+        pe_threshold (float): Minimum PE used to sparsify per-particle PE.
+            Defaults to ``0.0``.
+        min_segments (int): Minimum segments per event (seg reader filter).
+            Defaults to ``0``.
+        max_len (int): Cap on event count before the loop multiplier (-1 = no
+            cap). Defaults to ``-1``.
+        loop (int): Train-time epoch multiplier. Defaults to ``1``.
+        test_mode (bool): Emit voxelized/augmented test fragments and force
+            ``loop = 1``. Defaults to ``False``.
+        test_cfg (object): Test config (``voxelize``, ``crop``, ``post_transform``,
+            ``aug_transform``); required when ``test_mode``. Defaults to ``None``.
+
+    Note:
+        The dataset length is the minimum event count across the active readers
+        (they must be co-indexed). Loader settings (``batch_size``,
+        ``num_worker``) live at the top level of the config.
+
+    Example:
+        .. code-block:: python
+
+            >>> from pimm.datasets.builder import build_dataset
+            >>> # data root not in this env -> shown with doctest +SKIP
+            >>> ds = build_dataset(dict(type="LUCiDDataset", data_root="dataset_wc",
+            ...     modalities=("sensor",), output_mode="response",
+            ...     transform=[]))                  # doctest: +SKIP
+            >>> sample = ds[0]                       # doctest: +SKIP
+            >>> # output_mode="response" sample keys: coord (N, 3 PMT pos, or N, 1
+            >>> #   sensor index), energy (N, 1 total PE), time (N, 1), name, split
+            >>> # output_mode="labels": coord, energy, segment (category),
+            >>> #   instance (particle idx), time, name, split
+            >>> # output_mode="separate": raw reader keys (pmt_coord, pmt_pe, pp_*)
+            >>> #   + name, split
     """
 
     def __init__(

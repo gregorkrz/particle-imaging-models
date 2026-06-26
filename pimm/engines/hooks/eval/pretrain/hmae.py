@@ -13,8 +13,39 @@ def _get_writer_step(trainer):
 
 @HOOKS.register_module()
 class HMAEEvaluator(HookBase):
-    """
-    Validation hook for HMAE that logs chamfer losses on the validation set.
+    """Validation hook for hierarchical-MAE (HMAE) pretraining.
+
+    Runs the HMAE model over ``trainer.test_loader`` on rank 0 only, averaging
+    the reconstruction losses (total, coordinate/chamfer, feature) over the
+    valid batches (batches whose ``loss == 0`` from ``hmae_valid=False`` are
+    skipped) and logging them to the writer under ``val/loss``,
+    ``val/coord_loss`` and ``val/feat_loss``. Runs after every step when
+    ``every_n_steps > 0`` (when ``(global_iter + 1) % every_n_steps == 0``),
+    otherwise after each epoch; only when ``cfg.evaluate`` is true and
+    ``val_loader`` is not ``None``. Registered as ``HMAEEvaluator`` (use as
+    ``type`` in a ``hooks=[...]`` entry).
+
+    Args:
+        every_n_steps (int): Step cadence; ``0`` evaluates once per epoch.
+            Defaults to ``0``.
+        max_batches (int | None): Cap on batches per eval for speed; ``None``
+            uses all batches. Defaults to ``None``.
+
+    Note:
+        Scheduling is gated on ``val_loader`` being present, but evaluation
+        actually iterates ``trainer.test_loader``. This hook only logs losses; it
+        does NOT set ``current_metric_value`` / ``current_metric_name``, so it
+        does not drive checkpoint selection on its own.
+
+    Example:
+        Add to ``cfg.hooks`` for HMAE pretraining; every ``every_n_steps`` it
+        averages reconstruction losses on rank 0:
+
+        .. code-block:: python
+
+            hooks = [dict(type="HMAEEvaluator", every_n_steps=1000, max_batches=50)]
+            # → every 1000 steps logs  val/loss, val/coord_loss, val/feat_loss  to
+            #   the writer; does NOT set a checkpoint-selection metric
     """
 
     def __init__(self, every_n_steps: int = 0, max_batches: int = None):

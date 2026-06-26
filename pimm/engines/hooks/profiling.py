@@ -9,7 +9,51 @@ from .builder import HOOKS
 
 @HOOKS.register_module()
 class RuntimeProfiler(HookBase):
-    """Run a short torch profiler trace before normal training proceeds."""
+    """Run a short ``torch.profiler`` trace before normal training proceeds.
+
+    Runs once in ``before_train``: iterates ``warm_up + 1`` batches from the
+    train loader under ``torch.profiler.profile`` (CPU+CUDA activities), running
+    forward (and backward, on the ``"loss"`` output) per the ``forward`` /
+    ``backward`` flags. It writes a TensorBoard trace into
+    ``<save_path>/logdir/``, logs the top operators sorted by ``sort_by``, and —
+    when ``memory=True`` — records and dumps a CUDA memory snapshot to
+    ``<save_path>/memory_snapshot.pickle``. With ``interrupt=True`` it calls
+    ``sys.exit(0)`` after profiling so the process stops before real training.
+    Registered as ``RuntimeProfiler``.
+
+    Args:
+        forward (bool): Run the model forward pass during profiling. Defaults to
+            ``True``.
+        backward (bool): Run ``loss.backward()`` during profiling. Defaults to
+            ``True``.
+        interrupt (bool): Exit the process (``sys.exit(0)``) after profiling
+            instead of continuing into training. Defaults to ``False``.
+        warm_up (int): Number of warm-up iterations before the active profiling
+            window (the loop runs ``warm_up + 1`` steps). Defaults to ``2``.
+        sort_by (str): Key for sorting the printed operator table, e.g.
+            ``"cuda_time_total"``. Defaults to ``"cuda_time_total"``.
+        row_limit (int): Maximum rows in the printed operator table. Defaults to
+            ``30``.
+        memory (bool): Record and dump a CUDA memory-history snapshot. Defaults
+            to ``True``.
+
+    Note:
+        Intended as a diagnostic run, typically with ``interrupt=True`` so the
+        job exits after collecting the trace. Requires CUDA for the memory
+        snapshot.
+
+    Example:
+        Add to ``cfg.hooks`` for a one-off profiling run; once in ``before_train``
+        it traces a few steps, then (with ``interrupt=True``) exits before real
+        training begins:
+
+        .. code-block:: python
+
+            hooks = [dict(type="RuntimeProfiler", warm_up=2, interrupt=True)]
+            # → runs warm_up+1 batches under torch.profiler, writes a TensorBoard
+            #   trace to <save_path>/logdir/, dumps <save_path>/memory_snapshot.pickle,
+            #   logs the top-30 ops by cuda_time_total, then calls sys.exit(0)
+    """
 
     def __init__(
         self,

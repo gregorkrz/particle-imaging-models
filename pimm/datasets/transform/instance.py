@@ -5,10 +5,32 @@ from .common import *
 
 @TRANSFORMS.register_module()
 class ComputeAnchors(object):
-    """Compute anchors once per event and attach to data_dict['anchors'].
+    """Compute geometric anchors once per event and attach them to the sample.
+
+    Reads ``data_dict["coord"]`` and ``data_dict["energy"]`` and calls the
+    package ``compute_anchors`` helper (with ``ANCHOR_DEFAULT_CFG`` merged with
+    ``cfg``) to detect salient structures (e.g. endpoints, branches, Bragg
+    peaks), writing the resulting dict to ``data_dict["anchors"]``. These anchors
+    can later bias view sampling (see :class:`MultiViewGenerator`). A no-op when
+    the helper is unavailable or when ``coord``/``energy`` are missing.
+    Registered as ``ComputeAnchors`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
 
     Args:
-        cfg: dict overriding anchor defaults
+        cfg (dict, optional): Overrides merged on top of ``ANCHOR_DEFAULT_CFG``.
+            Defaults to ``None`` (empty dict).
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> rng = np.random.default_rng(0)
+            >>> data = {"coord": rng.random((50, 3), dtype="f4"),
+            ...         "energy": rng.random((50, 1), dtype="f4")}
+            >>> out = ComputeAnchors()(data)
+            >>> list(out["anchors"].keys())  # dict of detected salient structures
+            ['endpoints', 'branches_track', 'branches_shower', 'bragg', 'led']
+            # each value is an (M, 3) array of anchor coordinates; M varies per event
     """
 
     def __init__(self, cfg: Optional[dict] = None):
@@ -34,6 +56,58 @@ class ComputeAnchors(object):
 
 @TRANSFORMS.register_module()
 class InstanceParser(object):
+    """Compact instance ids and derive per-instance bounding boxes and centroids.
+
+    Reads ``data_dict["coord"]``, ``data_dict["segment"]``, and
+    ``data_dict["instance"]``. Points whose semantic label is in
+    ``segment_ignore_index`` have their instance set to
+    ``instance_ignore_index``; remaining instances are relabeled to a dense
+    ``0..K-1`` range. Writes back the compacted ``instance``, a per-point
+    ``instance_centroid`` ``(N, 3)``, and a per-instance ``bbox`` ``(K, 8)``
+    (center xyz, size xyz, theta, shifted class). When ``compute_axis_stats`` is
+    enabled it also runs a per-instance PCA and writes per-point
+    ``instance_axis`` ``(N, 3)``, ``instance_axis_coord``,
+    ``instance_axis_coord_normalized``, ``instance_axis_length``,
+    ``instance_axis_weight``, and ``instance_axis_coord_weight``. Registered as
+    ``InstanceParser`` — use this string as the ``type`` in a ``transform=[...]``
+    config list.
+
+    Args:
+        segment_ignore_index (tuple): Semantic labels excluded from instances;
+            their class indices are also vacated/shifted out of the bbox class.
+            Defaults to ``(-1, 0, 1)``.
+        instance_ignore_index (int): Instance id assigned to ignored points and
+            used to fill uninitialized centroid/bbox entries. Defaults to
+            ``-1``.
+        compute_axis_stats (bool): If ``True``, compute the per-instance
+            principal-axis statistics. Defaults to ``False``.
+        axis_min_points (int): Minimum points an instance needs for a valid PCA
+            axis (clamped to ``>= 1``). Defaults to ``5``.
+        axis_eps (float): Numerical tolerance for axis/eigenvalue validity and
+            normalization. Defaults to ``1e-6``.
+        axis_default (tuple): Fallback unit axis (normalized internally, must be
+            non-zero, shape ``(3,)``) used when PCA is invalid. Defaults to
+            ``(1.0, 0.0, 0.0)``.
+        axis_normalize_half_extent (bool): If ``True``, normalize the axis
+            coordinate by the half-extent rather than the full extent. Defaults
+            to ``True``.
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> data = {
+            ...     "coord": np.array([[0,0,0],[1,0,0],[0,0,0],[5,5,5],[6,5,5]], dtype="f4"),
+            ...     "segment": np.array([2, 2, 1, 3, 3]),   # class 1 is ignored
+            ...     "instance": np.array([10, 10, 7, 20, 20]),
+            ... }
+            >>> out = InstanceParser(segment_ignore_index=(-1, 0, 1))(data)
+            >>> out["instance"]            # ignored point -> -1, rest densified 0..K-1
+            array([ 0,  0, -1,  1,  1])
+            >>> out["bbox"].shape          # (K instances, 8): center xyz, size xyz, theta, class
+            (2, 8)
+    """
+
     def __init__(
         self,
         segment_ignore_index=(-1, 0, 1),
@@ -168,6 +242,48 @@ class InstanceParser(object):
 
 @TRANSFORMS.register_module()
 class LocalCovarianceFeatures(object):
+    """Per-point local-neighborhood covariance eigen-features.
+
+    Reads ``data_dict["coord"]``, builds a kd-tree, and for each point computes
+    the covariance of its ``k`` nearest neighbors (optionally Gaussian-weighted),
+    then its sorted (descending) eigenvalues. Writes ``out_keys[0]`` =
+    ``local_eigvals`` ``(N, 3)`` and ``out_keys[1]`` = ``local_shape`` ``(N, 4)``
+    holding the anisotropy ratios ``l2/l1``, ``l3/l2``, ``l3/l1`` and the surface
+    variation/curvature ``l3 / (l1 + l2 + l3)``. Both keys are appended to
+    ``data_dict["index_valid_keys"]`` so they are carried through index-based
+    cropping. A no-op when ``coord`` is missing or empty. Registered as
+    ``LocalCovarianceFeatures`` — use this string as the ``type`` in a
+    ``transform=[...]`` config list.
+
+    Args:
+        k (int): Number of neighbors used per point. Defaults to ``16``.
+        include_self (bool): If ``True``, include the point itself among its
+            neighbors; otherwise the nearest (self) neighbor is dropped. Defaults
+            to ``False``.
+        gaussian_weight (bool): If ``True``, weight neighbors by a Gaussian of
+            their distance rather than uniformly. Defaults to ``False``.
+        gaussian_sigma (float, optional): Fixed Gaussian bandwidth; if ``None``
+            a per-point median-distance bandwidth is used. Defaults to ``None``.
+        out_keys (tuple): Output keys ``(eigvals_key, shape_key)``. Defaults to
+            ``("local_eigvals", "local_shape")``.
+
+    Note:
+        Requires ``data_dict["index_valid_keys"]`` to already exist (it is
+        appended to, not created).
+
+    Example:
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> rng = np.random.default_rng(0)
+            >>> data = {"coord": rng.random((20, 3), dtype="f4"), "index_valid_keys": []}
+            >>> out = LocalCovarianceFeatures(k=5)(data)
+            >>> out["local_eigvals"].shape, out["local_shape"].shape
+            ((20, 3), (20, 4))  # per-point sorted eigvals + (l2/l1, l3/l2, l3/l1, curvature)
+            >>> out["index_valid_keys"]
+            ['local_eigvals', 'local_shape']  # registered for index-based cropping
+    """
+
     def __init__(
         self,
         k=16,

@@ -1,0 +1,220 @@
+/* pimm docs — custom theming on top of the PyData Sphinx theme.
+   Palette draws from the LArTPC "active pixel" look of the logo:
+   a deep neutrino blue/teal with an amber accent for the off-center vertex. */
+
+/* Self-hosted JetBrains Mono for the display title / wordmark (works offline). */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/jetbrains-mono-latin-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/jetbrains-mono-latin-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/jetbrains-mono-latin-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("fonts/jetbrains-mono-latin-800.woff2") format("woff2");
+}
+
+/* --- Wider content -------------------------------------------------------
+   sphinx-book-theme caps the article column fairly narrow by default, which
+   feels cramped for code blocks, tables, and the API reference. Widen the whole
+   layout and let the article fill the space between the sidebars. */
+.bd-page-width {
+  max-width: 100rem;
+}
+.bd-main .bd-content .bd-article-container {
+  max-width: none;
+}
+.bd-main .bd-content .bd-article-container > .bd-article {
+  max-width: none;
+}
+/* sphinx-book-theme wraps content in a max-width container; let it grow. */
+.bd-article-container,
+.bd-article {
+  max-width: none;
+}
+
+:root {
+  --pimm-blue: #1f6feb;
+  --pimm-teal: #1abc9c;
+  --pimm-amber: #f5a623;
+  --pimm-ink: #0b1f33;
+}
+
+/* Cohesive pimm palette — everything interactive keys off ONE blue accent with
+   neutral support tones, so links, link-hover, inline code, and table-row hover
+   read as a single theme (no blue/green/magenta mix). !important to win over the
+   base theme stylesheet. */
+html[data-theme="light"] {
+  --pst-color-primary: #1f6feb !important;
+  --pst-color-primary-highlight: #1558c0 !important;
+  --pst-color-secondary: #1abc9c !important;        /* teal: secondary accents */
+  --pst-color-accent: #f5a623 !important;
+  --pst-color-link: #1f6feb !important;             /* links: blue */
+  --pst-color-link-hover: #1558c0 !important;        /* hover: darker blue */
+  --pst-color-inline-code: #334155 !important;       /* code: neutral slate */
+  --pst-color-table-row-hover-bg: #e3edfd !important; /* hover: soft blue tint */
+}
+
+html[data-theme="dark"] {
+  --pst-color-primary: #4d9cff !important;
+  --pst-color-primary-highlight: #6fb4ff !important;
+  --pst-color-secondary: #2fd6b6 !important;
+  --pst-color-accent: #ffbf47 !important;
+  --pst-color-link: #4d9cff !important;
+  --pst-color-link-hover: #9fd0ff !important;
+  --pst-color-inline-code: #c7d2e0 !important;
+  --pst-color-table-row-hover-bg: #20304a !important;
+}
+
+/* Brand logo text in the navbar. */
+.navbar-brand .logo__title,
+.navbar-brand p {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* Landing-page hero. Plain — no panel, no gradient. The `# heading` inside the
+   div directive renders as <p class="rubric">, so style that as the title. */
+.pimm-hero {
+  padding: 1.6rem 0 0.6rem;
+  margin: 0;
+}
+.pimm-hero .rubric {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 2.5rem;
+  line-height: 1.15;
+  font-weight: 500;          /* medium — not bold */
+  letter-spacing: -1px;
+  text-transform: lowercase; /* "particle imaging models" */
+  margin: 0 0 0.5rem;
+  color: var(--pst-color-text-base);
+  border: 0;
+}
+.pimm-tagline {
+  display: inline-block;
+  font-size: 1.28rem;
+  line-height: 1.5;
+  color: var(--pst-color-text-muted);
+  max-width: 46rem;
+  margin-bottom: 0.4rem;
+}
+/* Put the two hero buttons on one row with spacing. */
+.pimm-hero p:has(.sd-btn) {
+  display: inline-block;
+  margin: 0.6rem 0.6rem 0 0;
+}
+
+/* --- Strip PyTorch/Meta chrome shipped with pytorch_sphinx_theme2 --------- */
+.pytorch-site-link,          /* "Go to PyTorch.org" link in the navbar */
+.cookie-banner-wrapper,      /* Meta/Facebook cookie banner */
+.site-footer {               /* "Copyright © Meta Platforms, Inc" footer */
+  display: none !important;
+}
+
+/* Bigger pimm logo + keep the "pimm" wordmark visible in the navbar. */
+.navbar-brand img,
+.navbar-brand .logo__image {
+  height: 30px !important;
+  width: auto !important;
+}
+.navbar-brand .logo__title,
+.navbar-brand p.title {
+  display: inline-block !important;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: -0.5px;
+  margin-left: 0.4rem;
+}
+
+/* Thin, unobtrusive scrollbar for the left section navigation. */
+.bd-sidebar-primary {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pst-color-border) transparent;
+}
+.bd-sidebar-primary::-webkit-scrollbar {
+  width: 6px;
+}
+.bd-sidebar-primary::-webkit-scrollbar-thumb {
+  background: var(--pst-color-border);
+  border-radius: 3px;
+}
+.bd-sidebar-primary::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* The registry tables generate their per-class pages via a hidden autosummary;
+   only the Name/Summary table is shown. */
+.hidden-autosummary {
+  display: none !important;
+}
+
+/* Code inside a link (cross-references like the registry Name column and
+   {py:class}/{py:func} refs) should take the blue link color, not the neutral
+   inline-code slate — so all links read as one color. */
+a.reference code,
+a.reference .pre,
+code.xref,
+code.xref .pre {
+  color: var(--pst-color-link) !important;
+}
+
+/* Restore the original soft-lavender announcement bar (the theme's secondary-bg,
+   which book-theme was rendering as grey). */
+.bd-header-announcement {
+  background-color: var(--pst-color-secondary-bg);
+  color: var(--pst-color-text-base);
+}
+.bd-header-announcement a {
+  color: var(--pst-color-primary);
+}
+
+/* Code blocks: rounder corners. */
+div.highlight {
+  border-radius: 8px;
+}
+
+/* Make tables breathe a bit. */
+table.docutils td,
+table.docutils th {
+  padding: 0.5em 0.8em;
+}
+
+/* Keyboard-style inline tokens for CLI flags. */
+kbd,
+code.kbd {
+  background: var(--pst-color-surface);
+  border: 1px solid var(--pst-color-border);
+  border-radius: 5px;
+  padding: 0.1em 0.4em;
+  font-size: 0.85em;
+}
+
+/* Tighten the announcement bar. */
+.bd-header-announcement {
+  font-size: 0.86rem;
+}
+
+/* Pretty "at a glance" definition pairs. */
+.pimm-kv dt {
+  color: var(--pst-color-primary);
+  font-weight: 700;
+}

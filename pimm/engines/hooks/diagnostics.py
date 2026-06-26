@@ -9,20 +9,52 @@ from .builder import HOOKS
 
 @HOOKS.register_module()
 class GradientNormLogger(HookBase):
-    """
-    Hook to log gradient norms to Weights & Biases (wandb).
-    
-    This hook computes the gradient norm of model parameters and logs it to wandb
-    after each training step. It supports different norm types (L1, L2, etc.) and
-    can optionally log per-layer gradient norms for detailed monitoring.
-    
+    """Log model gradient norms to the writer after each training step.
+
+    Runs in ``after_step`` every ``log_frequency`` steps: computes the
+    aggregate gradient norm over all model parameters (for the configured
+    ``norm_type``) and writes it under ``{prefix}/total``. With
+    ``log_per_layer=True`` it additionally writes each named parameter's
+    gradient norm under ``{prefix}/layers/<name>``. Registered as
+    ``GradientNormLogger``.
+
     Args:
-        norm_type (float): Type of norm to compute (default: 2.0 for L2 norm)
-        log_per_layer (bool): Whether to log gradient norms for individual layers (default: False)
-        log_frequency (int): Log gradient norms every N steps (default: 1)
-        prefix (str): Prefix for wandb logging keys (default: "grad_norm")
+        norm_type (float): Order of the norm to compute, e.g. ``2.0`` for L2 or
+            ``float("inf")`` for max-abs. Defaults to ``2.0``.
+        log_per_layer (bool): If ``True``, also log per-parameter gradient
+            norms (verbose). Defaults to ``False``.
+        log_frequency (int): Compute and log every this many steps. Defaults to
+            ``1``.
+        prefix (str): Namespace prefix for the writer keys. Defaults to
+            ``"grad_norm"``.
+
+    Note:
+        No-ops when ``trainer.writer`` is absent/``None`` or does not expose
+        ``add_scalar``. Reads gradients after backward, so it reflects the
+        un-clipped gradients of that step.
+
+    Example:
+        Add to ``cfg.hooks``; after every ``log_frequency`` steps it writes the
+        total gradient norm to the experiment writer (W&B/TensorBoard):
+
+        .. code-block:: python
+
+            hooks = [dict(type="GradientNormLogger", log_frequency=50)]
+            # → logs scalar  "grad_norm/total"  every 50 optimizer steps
+            #   (with log_per_layer=True, also "grad_norm/layers/<name>" per param)
+
+        The norm helper is pure and can be exercised standalone:
+
+        .. code-block:: python
+
+            >>> import torch
+            >>> from pimm.engines.hooks.diagnostics import GradientNormLogger
+            >>> p = torch.nn.Parameter(torch.tensor([3.0, 4.0]))
+            >>> (0.5 * (p ** 2).sum()).backward()   # grad = [3., 4.]
+            >>> float(GradientNormLogger()._compute_grad_norm([p]))
+            5.0
     """
-    
+
     def __init__(self, norm_type=2.0, log_per_layer=False, log_frequency=1, prefix="grad_norm"):
         """Configure gradient norm type, cadence, and writer namespace."""
         self.norm_type = norm_type
@@ -127,35 +159,59 @@ DTYPE_TO_TORCH_DTYPE = {
 
 @HOOKS.register_module()
 class DtypeOverrider(HookBase):
-    """
-    Hook that forces specific layers to use a specified dtype for computation.
-    
-    This hook can:
-    1. Override forward methods to force computation in a specific dtype
-    2. Register forward/backward hooks to convert parameters/gradients
-    
-    This is particularly useful for forcing fp32 computation in precision-sensitive
-    layers like LayerNorm, even when using mixed precision training.
-    
+    """Force matched layers to compute (and optionally store params) in a dtype.
+
+    Runs once in ``before_train``: walks the model and, for every submodule
+    whose dotted name matches ``patterns`` or whose class name matches
+    ``class_patterns``, wraps each method in ``methods_to_override`` so its
+    tensor input is cast to ``dtype`` and its output cast back to the original
+    dtype. With ``override_parameters=True`` the matched module's own
+    parameters are also cast to ``dtype`` in place. Useful for keeping
+    precision-sensitive layers (e.g. LayerNorm) in fp32 under mixed-precision
+    training. Registered as ``DtypeOverrider``.
+
     Args:
-        patterns (list): List of regex patterns to match layer names
-        class_patterns (list): List of regex patterns to match class names
-        dtype (torch.dtype): Data type to use for computation (default: torch.float32)
-        methods_to_override (list): List of methods to override (default: ['forward'])
-        override_parameters (bool): Whether to override parameters as well (default: False)
-        verbose (bool): Whether to log detailed information about overridden layers
-        check_interval (int): How often to check if parameters need to be cast back (default: 10)
-    
-    Example usage:
-        hooks = [
-            dict(type='DtypeOverrider',
-                 patterns=['layer_norm', 'LayerNorm', 'norm'],
-                 dtype=torch.float32,
-                 override_parameters=True,
-                 verbose=True)
-        ]
+        patterns (list, optional): Regex patterns matched against dotted module
+            names. Defaults to ``None`` (treated as ``[]``).
+        class_patterns (list, optional): Regex patterns matched against module
+            class names. Defaults to ``None`` (treated as ``[]``).
+        dtype (str): Target dtype name (key of the module's dtype table, e.g.
+            ``"float32"``, ``"bfloat16"``), resolved to a ``torch.dtype``.
+            Defaults to ``"float32"``.
+        methods_to_override (list, optional): Method names on matched modules to
+            wrap with the cast. Defaults to ``None`` (treated as
+            ``["forward"]``).
+        override_parameters (bool): If ``True``, also cast matched modules'
+            parameters to ``dtype`` in place. Defaults to ``False``.
+        verbose (bool): If ``True``, log each wrapped method/parameter and a
+            summary. Defaults to ``False``.
+        check_interval (int): Reserved cadence for periodic parameter-dtype
+            re-checks. Defaults to ``10``.
+
+    Note:
+        Only the first positional tensor argument of a wrapped method is cast;
+        methods whose first argument is not a tensor are called unchanged. The
+        DDP wrapper is handled by walking the underlying model.
+
+    Example:
+        Add to ``cfg.hooks``; once in ``before_train`` it wraps matched modules
+        so they compute in ``dtype`` regardless of AMP autocast:
+
+        .. code-block:: python
+
+            hooks = [
+                dict(type="DtypeOverrider",
+                     patterns=["layer_norm", "LayerNorm", "norm"],
+                     dtype="float32",
+                     override_parameters=True,
+                     verbose=True),
+            ]
+            # → each matched module's forward() now casts its input to float32 and
+            #   casts the output back to the original dtype; with
+            #   override_parameters=True the module's own params are converted to
+            #   float32 in place (each wrap/conversion logged via verbose)
     """
-    
+
     def __init__(
         self, 
         patterns=None, 
@@ -271,22 +327,50 @@ class DtypeOverrider(HookBase):
 
 @HOOKS.register_module()
 class LogitEntropyLogger(HookBase):
-    """
-    Hook to calculate and log entropy of teacher logits using Sonata's temperature schedule.
-    
-    This hook computes the entropy of teacher logits (after softmax) to help monitor
-    the confidence and uncertainty of model predictions during training.
-    High entropy indicates uncertain predictions, while low entropy indicates confident predictions.
-    
+    """Log the entropy of teacher logits using Sonata's temperature schedule.
+
+    Monitors prediction confidence by computing the Shannon entropy of the
+    temperature-scaled softmax over ``logits_key`` in the model output dict. In
+    ``before_train`` it locates the Sonata submodule (unwrapping DDP) to read
+    its current ``teacher_temp``; if none is found it falls back to
+    ``default_temperature``. Runs in ``after_step`` every ``log_frequency``
+    steps: logs the entropy (and the temperature) to the writer under
+    ``train_batch/{prefix}`` and to ``trainer.storage``/``iter_info``, and
+    stashes the temperature back into the model output dict for other consumers.
+    ``after_epoch`` logs the epoch-average entropy under ``train/{prefix}``.
+    Registered as ``LogitEntropyLogger``.
+
     Args:
-        logits_key (str): Key in model output dict to find the teacher logits (default: "teacher_logits")
-        log_frequency (int): How often to log entropy values (default: 1)
-        prefix (str): Prefix for logging keys (default: "entropy")
-        reduction (str): How to reduce entropy values ('mean', 'none', etc.) (default: 'mean')
-        log_per_class (bool): Whether to log per-class entropy (default: False)
-        default_temperature (float): Default temperature to use if Sonata not found (default: 0.07)
+        logits_key (str): Key in the model output dict holding the logits.
+            Defaults to ``"teacher_logits"``.
+        log_frequency (int): Compute and log every this many steps. Defaults to
+            ``1``.
+        prefix (str): Namespace prefix for the logged keys. Defaults to
+            ``"entropy"``.
+        reduction (str): How to reduce the per-token entropy: ``"mean"``,
+            ``"sum"``, or ``"none"``. Defaults to ``"mean"``.
+        log_per_class (bool): If ``True`` (and ``reduction="none"``), also log
+            per-class mean entropy. Defaults to ``False``.
+        default_temperature (float): Temperature used when no Sonata model is
+            found. Defaults to ``0.07``.
+
+    Note:
+        Higher entropy indicates more uncertain predictions; lower entropy more
+        confident ones. No-ops on a given step if the logits key is absent from
+        the model output dict.
+
+    Example:
+        Add to ``cfg.hooks`` for Sonata-style SSL; every ``log_frequency`` steps
+        it logs the entropy of the teacher logits:
+
+        .. code-block:: python
+
+            hooks = [dict(type="LogitEntropyLogger", log_frequency=50)]
+            # → writes "train_batch/entropy" and "entropy/temperature" to the writer
+            #   (and the epoch average "train/entropy"), puts "entropy" in
+            #   trainer.storage, and appends "entropy: <val>" to the iter log line
     """
-    
+
     def __init__(
         self,
         logits_key="teacher_logits",
@@ -431,19 +515,41 @@ class LogitEntropyLogger(HookBase):
 
 @HOOKS.register_module()
 class PrototypeUsageLogger(HookBase):
-    """
-    Hook to monitor prototype utilization in clustering/tokenization models like Sonata.
-    
-    This hook tracks:
-    1. How many prototypes are actually being used (by looking at argmax assignments)
-    2. What percentage of prototypes are unused
-    3. How many tokens are assigned to each active prototype on average
-    
+    """Monitor prototype utilization in Sonata-style clustering heads.
+
+    In ``before_train`` (after unwrapping DDP) it finds the Sonata submodule and
+    registers a forward hook on each teacher/student head whose name contains
+    ``"head"``. Each forward hook fires every ``log_frequency`` calls (training
+    mode only) and, from the head's output logits, computes prototype-usage
+    statistics via argmax assignment counts (synchronized across ranks):
+    number of used prototypes, percent unused, average tokens per active
+    prototype, and the assignment-distribution entropy. These are written to the
+    writer under ``{prefix}/<head>/...``. ``after_train`` removes all registered
+    hooks. Registered as ``PrototypeUsageLogger``.
+
     Args:
-        log_frequency (int): How often to log prototype usage (default: 10)
-        prefix (str): Prefix for logging keys (default: "prototypes")
+        log_frequency (int): Log statistics every this many head forward passes.
+            Defaults to ``10``.
+        prefix (str): Namespace prefix for the logged keys. Defaults to
+            ``"prototypes"``.
+
+    Note:
+        Specific to models exposing a Sonata-like ``teacher``/``student``
+        ``ModuleDict`` of heads; warns and does nothing if none is found.
+        Counts are all-reduced so the reported usage is global across GPUs.
+
+    Example:
+        Add to ``cfg.hooks`` for Sonata-style SSL; it watches each clustering
+        head's prototype assignments:
+
+        .. code-block:: python
+
+            hooks = [dict(type="PrototypeUsageLogger", log_frequency=20)]
+            # → every 20 head forward passes writes, per head, the cross-rank
+            #   "prototypes/<teacher|student>/<head>/{used_count,unused_percent,
+            #   tokens_per_prototype,assignment_entropy}" to the writer
     """
-    
+
     def __init__(
         self,
         log_frequency=10,
@@ -606,21 +712,47 @@ class PrototypeUsageLogger(HookBase):
 
 @HOOKS.register_module()
 class FeatureStdMonitor(HookBase):
-    """
-    Hook to monitor the standard deviation of feature vectors in student and teacher models.
-    
-    This is useful for tracking feature collapse and ensuring features remain diverse
-    during training. The hook uses forward hooks to compute stats directly during
-    the forward pass, avoiding storing large feature tensors in memory.
-    
+    """Monitor feature standard deviation to detect representation collapse.
+
+    In ``before_train`` (after unwrapping DDP) it locates the student/teacher
+    module (Sonata, JEPA, etc.) and registers forward hooks on the selected
+    backbones (and their ``representation_fusion`` if present). Each forward
+    hook fires every ``log_frequency`` calls (training mode only) and computes,
+    with cross-rank synchronization, the global feature std, per-sample batch
+    std, and per-channel std summary (mean/min/max), logging them to the writer
+    under ``{prefix}/<module>/...``; with ``track_channels=True`` it also logs
+    each channel's std. ``after_train`` removes all hooks. Useful for catching
+    feature collapse (std trending to zero). Registered as ``FeatureStdMonitor``.
+
     Args:
-        log_frequency (int): How often to log feature statistics (default: 10)
-        prefix (str): Prefix for logging keys (default: "feature_std")
-        monitor_student (bool): Whether to monitor student model features (default: True)
-        monitor_teacher (bool): Whether to monitor teacher model features (default: True)
-        track_channels (bool): Whether to track per-channel statistics (default: False)
+        log_frequency (int): Log statistics every this many forward passes.
+            Defaults to ``10``.
+        prefix (str): Namespace prefix for the logged keys. Defaults to
+            ``"feature_std"``.
+        monitor_student (bool): Register hooks on the student branch. Defaults
+            to ``True``.
+        monitor_teacher (bool): Register hooks on the teacher branch. Defaults
+            to ``True``.
+        track_channels (bool): If ``True``, additionally log per-channel std.
+            Defaults to ``False``.
+
+    Note:
+        Statistics are computed inside the forward pass to avoid retaining large
+        feature tensors. Warns and does nothing if no student/teacher module is
+        found.
+
+    Example:
+        Add to ``cfg.hooks`` to catch representation collapse during SSL; it
+        watches the std of teacher/student backbone features:
+
+        .. code-block:: python
+
+            hooks = [dict(type="FeatureStdMonitor", log_frequency=20)]
+            # → every 20 forward passes writes "feature_std/<student|teacher>/
+            #   {global_std,batch_std,channel_mean_std,channel_min_std,
+            #   channel_max_std}" to the writer (std trending to 0 signals collapse)
     """
-    
+
     def __init__(
         self,
         log_frequency=10,
@@ -804,21 +936,42 @@ class FeatureStdMonitor(HookBase):
 
 @HOOKS.register_module()
 class ParameterCounter(HookBase):
-    """
-    Hook to count and log parameters in each module at the start of training.
-    
-    This hook provides detailed information about model architecture including:
-    - Total parameters and trainable parameters
-    - Parameter count breakdown by module
-    - Memory footprint estimation
-    
+    """Log a parameter-count breakdown of the model at the start of training.
+
+    Runs once in ``before_train``: logs total / trainable / non-trainable
+    parameter counts and an estimated (fp32) memory footprint. With
+    ``show_details=True`` it logs a per-module breakdown (optionally sorted by
+    size, filtered by ``min_params``) and the ten largest modules; with
+    ``show_gradients=True`` it lists how many parameters require gradients and
+    which modules contain frozen parameters. Output goes to the trainer logger
+    only. Registered as ``ParameterCounter``.
+
     Args:
-        show_details (bool): Whether to show per-module breakdown (default: True)
-        show_gradients (bool): Whether to show gradient information (default: True)
-        sort_by_params (bool): Whether to sort modules by parameter count (default: True)
-        min_params (int): Minimum parameters to show a module (default: 0)
+        show_details (bool): Show the per-module parameter breakdown. Defaults
+            to ``True``.
+        show_gradients (bool): Show gradient-requirement and frozen-module info.
+            Defaults to ``True``.
+        sort_by_params (bool): Sort the module breakdown by parameter count
+            (descending). Defaults to ``True``.
+        min_params (int): Omit modules with fewer than this many parameters from
+            the breakdown. Defaults to ``0``.
+
+    Note:
+        Purely diagnostic — logs to the console/logger, not the writer. The DDP
+        wrapper is unwrapped before counting.
+
+    Example:
+        Add to ``cfg.hooks``; once in ``before_train`` it logs a parameter
+        breakdown to the trainer logger (not the writer):
+
+        .. code-block:: python
+
+            hooks = [dict(type="ParameterCounter", min_params=1000)]
+            # → logs total/trainable/non-trainable param counts, an fp32 memory
+            #   estimate, a per-module table (modules with >=1000 params), the top
+            #   10 largest modules, and which modules hold frozen params
     """
-    
+
     def __init__(self, show_details=True, show_gradients=True, sort_by_params=True, min_params=0):
         """Configure parameter detail level and filtering for startup logs."""
         self.show_details = show_details
@@ -939,30 +1092,48 @@ class ParameterCounter(HookBase):
 
 @HOOKS.register_module()
 class AttentionMaskAnnealingHook(HookBase):
-    """
-    Hook to update attention mask annealing progress during training.
+    """Drive and log attention-mask annealing for the Panda detector decoder.
 
-    For use in the Panda detector.
-    
-    This hook is designed for models with dynamic attention masks that gradually
-    anneal during training (e.g., Mask3Former decoder). It:
-    1. Updates annealing progress at each training step
-    2. Logs annealing factors per layer to wandb/tensorboard
-    3. Reports when annealing completes
-    
+    For models that gradually anneal their decoder attention masks (e.g. a
+    Mask3Former-style decoder). In ``before_train`` it seeds the step counter
+    from resumed progress, checks whether the model exposes
+    ``update_anneal_step`` (disabling itself otherwise), and logs the annealing
+    schedule. In ``after_step`` it advances the model's annealing step every
+    step and, every ``log_frequency`` steps, reads each decoder block's anneal
+    factor to log the average (and per-block factors when
+    ``log_per_layer=True``) to ``trainer.storage`` and the writer, announcing
+    once when annealing completes. Registered as ``AttentionMaskAnnealingHook``.
+
     Args:
-        log_frequency (int): How often to log annealing factors (default: 100)
-        log_per_layer (bool): Whether to log per-layer annealing factors (default: False)
-        prefix (str): Prefix for logging keys (default: "anneal")
-    
-    Example usage in config:
-        hooks = [
-            dict(type="AttentionMaskAnnealingHook", 
-                 log_frequency=100,
-                 log_per_layer=True),
-        ]
+        log_frequency (int): Log annealing factors every this many steps.
+            Defaults to ``100``.
+        log_per_layer (bool): If ``True``, also log each decoder block's anneal
+            factor. Defaults to ``False``.
+        prefix (str): Namespace prefix for the logged keys. Defaults to
+            ``"anneal"``.
+
+    Note:
+        This hook *updates* the model's annealing state, so it is functionally
+        required (not merely diagnostic) for models that anneal. It silently
+        disables itself if the model lacks ``update_anneal_step`` or has
+        annealing turned off.
+
+    Example:
+        Add to ``cfg.hooks`` for a Mask3Former-style Panda decoder; it both
+        drives and logs attention-mask annealing:
+
+        .. code-block:: python
+
+            hooks = [
+                dict(type="AttentionMaskAnnealingHook",
+                     log_frequency=100, log_per_layer=True),
+            ]
+            # → calls model.update_anneal_step(step) every step; every 100 steps
+            #   puts "anneal_factor" in trainer.storage and writes "anneal/average"
+            #   (and "anneal/layer_<i>" per block) to the writer; logs once when the
+            #   factor drops below 0.01 (annealing complete)
     """
-    
+
     def __init__(self, log_frequency=100, log_per_layer=False, prefix="anneal"):
         """Configure annealing update logging cadence and namespace."""
         self.log_frequency = log_frequency

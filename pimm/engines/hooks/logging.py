@@ -54,27 +54,46 @@ def model_output_scalar_value(model_output_dict, key):
 
 @HOOKS.register_module()
 class WandbNamer(HookBase):
-    """
-    Auto-generate wandb_run_name from config values.
-    
-    Simple hook that joins specified config values with a separator to create
-    a descriptive wandb run name. No lambdas or templates - just a list of keys.
-    
+    """Auto-generate ``cfg.wandb_run_name`` from selected config values.
+
+    Joins the resolved values of the requested (possibly nested) config keys
+    with a separator, optionally formatting large numbers with K/M/B suffixes,
+    then appends any ``extra`` strings, to build a descriptive W&B run name.
+    Runs once in ``modify_config`` (before the writer is built), so the name is
+    in place before logging starts. Registered as ``WandbNamer``.
+
     Args:
-        keys: Tuple of config keys to include in name.
-              Supports nested keys: "data.train.max_len" or "model.type"
-        sep: Join character (default: "-")
-        format_numbers: Format large numbers with suffixes (1000000 -> 1M)
-        extra: Extra strings to append (str or tuple of strings), e.g. "fft", "scratch"
-    
+        keys (tuple): Config keys to include in the name, in order. Supports
+            dotted nested access such as ``"data.train.max_len"`` or
+            ``"model.type"``; keys that resolve to ``None`` are skipped.
+            Defaults to ``()``.
+        sep (str): Separator joining the parts. Defaults to ``"-"``.
+        format_numbers (bool): If ``True``, render numeric values with K/M/B
+            suffixes (e.g. ``1000000`` -> ``"1M"``). Defaults to ``True``.
+        extra (str or tuple, optional): Extra string(s) appended after the
+            keyed parts, e.g. ``"fft"`` or ``"scratch"``. A bare string is
+            wrapped to a one-tuple. Defaults to ``None``.
+
+    Note:
+        If ``wandb_run_name`` was set on the command line (present in
+        ``cfg._cli_options``), this hook leaves it untouched. So
+        ``--options wandb_run_name=my-name`` overrides the auto-generated name.
+
     Example:
-        dict(type="WandbNamer", keys=("model.type", "data.train.max_len", "seed"), extra="fft")
-        # generates: "Sonata-v1m1-1M-0-fft"
-    
-    CLI override:
-        --options wandb_run_name=my-custom-name  # overrides auto-generated name
+        Add to ``cfg.hooks``; once in ``modify_config`` (before the writer is
+        built) it sets ``cfg.wandb_run_name`` from the joined config values:
+
+        .. code-block:: python
+
+            hooks = [
+                dict(type="WandbNamer",
+                     keys=("model.type", "data.train.max_len", "seed"),
+                     extra="fft"),
+            ]
+            # → sets cfg.wandb_run_name = "Sonata-v1m1-1M-0-fft" (left untouched if
+            #   wandb_run_name was passed on the CLI)
     """
-    
+
     def __init__(self, keys=(), sep="-", format_numbers=True, extra=None):
         """Store config keys and formatting options for generated run names."""
         self.keys = keys
@@ -138,7 +157,34 @@ class WandbNamer(HookBase):
 
 @HOOKS.register_module()
 class IterationTimer(HookBase):
-    """Measure data and batch latency and append ETA to iteration logs."""
+    """Measure data/batch latency and append timing and ETA to iteration logs.
+
+    Times each training iteration and feeds the results into
+    ``trainer.storage`` and the per-iteration log string. In ``before_step`` it
+    records ``data_time`` (time spent waiting for the batch); in ``after_step``
+    it records ``batch_time`` (full iteration), decrements the remaining-
+    iteration counter, and appends ``Data``, ``Batch``, and ``Remain`` (ETA,
+    computed from the running average batch time) to ``comm_info["iter_info"]``.
+    The remaining-iteration budget is initialized in ``before_train`` and the
+    per-iteration timer is reset in ``before_epoch``. Registered as
+    ``IterationTimer``.
+
+    Args:
+        warmup_iter (int): Number of initial iterations whose timing is reset
+            (excluded from the running averages) so startup/compile overhead
+            does not skew ETA. Defaults to ``1``.
+
+    Example:
+        Add to ``cfg.hooks``; it times each iteration and feeds the timing into
+        ``trainer.storage`` and the per-step log line:
+
+        .. code-block:: python
+
+            hooks = [dict(type="IterationTimer", warmup_iter=2)]
+            # → puts scalars "data_time" (before_step) and "batch_time" (after_step)
+            #   into trainer.storage and appends "Data … Batch … Remain HH:MM:SS"
+            #   (ETA) to comm_info["iter_info"]; the first 2 iters reset the averages
+    """
 
     def __init__(self, warmup_iter=1):
         """Configure how many initial iterations are excluded from averages."""
@@ -191,7 +237,44 @@ class IterationTimer(HookBase):
 
 @HOOKS.register_module()
 class InformationWriter(HookBase):
-    """Assemble console and writer logs from scalar model outputs."""
+    """Assemble per-step console logs and write scalar train metrics.
+
+    The primary training logger. In ``before_step`` it seeds the shared
+    ``comm_info["iter_info"]`` string with the epoch/iteration position. In
+    ``after_step`` it filters the model output dict down to scalar-like entries
+    (dropping large tensors such as logits/masks and ``match_*`` keys, and
+    mapping ``total_loss`` to ``loss``), records them in ``trainer.storage``,
+    appends them plus the current learning rate to the iteration log, emits that
+    line to the logger every ``log_frequency`` global steps (and always on the
+    last iteration of an epoch), and mirrors each scalar to the writer under
+    ``train_batch/*`` (with ``params/lr``). In ``after_epoch`` it logs the
+    epoch-average of each tracked key under ``train/*``. Registered as
+    ``InformationWriter``.
+
+    Args:
+        log_frequency (int): Emit the assembled console line every this many
+            global steps (coerced to at least ``1``). Writer scalars are logged
+            every step regardless. Defaults to ``1``.
+        step_offset (int): Constant added to the computed global step, e.g. to
+            continue a warm-started run's W&B x-axis from where the parent
+            checkpoint left off. Defaults to ``0``.
+
+    Note:
+        Writer scalars are only emitted when ``trainer.writer`` is not ``None``.
+        The global step is computed to match the other logging/diagnostic hooks
+        so all curves share an x-axis.
+
+    Example:
+        Add to ``cfg.hooks``; it is the main per-step logger — it records the
+        scalar model outputs and learning rate and mirrors them to the writer:
+
+        .. code-block:: python
+
+            hooks = [dict(type="InformationWriter", log_frequency=20)]
+            # → every step writes "train_batch/<key>" for each scalar loss/metric
+            #   and "params/lr" to the writer; emits the assembled console log line
+            #   every 20 steps; in after_epoch writes the "train/<key>" epoch averages
+    """
 
     def __init__(self, log_frequency=1, step_offset=0):
         """Configure how often per-step training summaries are emitted.
