@@ -8,7 +8,7 @@ sd_hide_title: true
 
 # Particle Imaging Models
 
-[Foundation-model research for neutrino & particle-imaging detectors — 3D point-cloud perception for liquid-argon TPCs, built on [Pointcept](https://github.com/Pointcept/Pointcept).]{.pimm-tagline}
+[Foundation-model research for neutrino & particle-imaging detectors, built on [Pointcept](https://github.com/Pointcept/Pointcept).]{.pimm-tagline}
 
 ```{button-ref} getting_started/installation
 :ref-type: myst
@@ -83,9 +83,7 @@ for quick probes.
 `(N, C)` tensors with an `offset` vector, energy-aware transforms, and
 motif/PID/instance labels — no padding, no fixed point counts.
 
-## Integrated work
-
-pimm brings together a stack of methods behind one config and launch surface:
+## Integrated works
 
 - **Backbones** — [PTv3](https://arxiv.org/abs/2312.10035),
   [PTv2](https://arxiv.org/abs/2210.05666),
@@ -96,10 +94,10 @@ pimm brings together a stack of methods behind one config and launch surface:
 - **Segmentation** — semantic segmentation, PointGroup, and the
   [Panda Detector](https://arxiv.org/abs/2512.01324) panoptic model.
 - **Datasets** — [PILArNet-M](https://arxiv.org/abs/2502.02558), multimodal
-  JAXTPC, Water-Cherenkov (LUCiD), MicroBooNE.
+  JAXTPC, Water-Cherenkov (LUCiD).
 
 :::{seealso}
-New here? Start with **{doc}`getting_started/installation`**, then the
+Start with **{doc}`getting_started/installation`**, then the
 **{doc}`getting_started/quickstart`**. Coming from another Pointcept-style
 codebase? Skim **{doc}`getting_started/concepts`** for what pimm does
 differently.
