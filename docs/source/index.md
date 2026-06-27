@@ -6,6 +6,12 @@ sd_hide_title: true
 
 :::{div} pimm-hero
 
+```{image} _static/logo.svg
+:alt: pimm logo
+:class: pimm-hero-logo
+:width: 96px
+```
+
 # Particle Imaging Models
 
 [Foundation-model research for neutrino & particle-imaging detectors.]{.pimm-tagline}
@@ -47,14 +53,14 @@ node, or across many HPC nodes.
 - {doc}`Checkpoints <checkpoints/index>` — one atomic, reshardable checkpoint
   format for every parallelism. Save-cadence hooks, manual export, and automatic
   Hugging Face upload.
-- {doc}`Using trained models <models/index>` — load any export with
-  `pimm.from_pretrained`, fine-tune from the Hub, and reproduce the
-  exact dataset format a model expects.
+- {doc}`Research ecosystem <research_ecosystem/index>` — load any export with
+  `pimm.from_pretrained` and fine-tune from the Hub, then contribute your own
+  models, hooks, datasets, and transforms to the substrate.
 - {doc}`Datasets & transforms <datasets/index>` — the packed point-cloud
-  contract, PILArNet-M, multimodal LArTPC/Water-Cherenkov readers, transform
-  pipelines, and bringing your own data.
+  contract, PILArNet-M, multimodal LArTPC/Water-Cherenkov readers, and transform
+  pipelines.
 - {doc}`Hooks <hooks/index>` — the lifecycle hook system (logging, diagnostics,
-  evaluators, checkpoint savers) and how to write your own.
+  evaluators, checkpoint savers).
 - {doc}`Evaluation <evaluation/index>` — in-loop evaluators, probe suites for
   SSL, and final testing with `test.sh`.
 - {doc}`Tutorials <tutorials/index>` 
@@ -80,20 +86,27 @@ codebase? Skim **{doc}`getting_started/concepts`** for what pimm does
 differently.
 :::
 
+---
+
+## Acknowledgements
+
+* pimm's name is inspired by the pytorch-imaging-models library, which is called timm.
+* pimm's codebase was initially forked from [Pointcept](https://github.com/Pointcept/Pointcept), and the modified with influences from [torchtitan](https://github.com/pytorch/torchtitan), [mmcv](https://github.com/open-mmlab/mmcv), [torchrl](https://github.com/pytorch/rl), and [Megatron-LM](https://github.com/nvidia/megatron-lm).
+* The documentation design is largely based off PyTorch's own docs theme [`pytorch_sphinx_theme2`](https://github.com/pytorch/pytorch_sphinx_theme/tree/pytorch_sphinx_theme2). 
+
 ```{toctree}
 :hidden:
 :maxdepth: 2
 
 Getting started <getting_started/index>
-Datasets <datasets/index>
-Trained models <models/index>
 Tutorials <tutorials/index>
-Configuration <configuration/index>
+Research ecosystem <research_ecosystem/index>
+Datasets <datasets/index>
+Configurations <configuration/index>
 Hooks <hooks/index>
 Checkpoints <checkpoints/index>
-Evaluation <evaluation/index>
+Model evaluation <evaluation/index>
 Distributed training <distributed/index>
-HPC <hpc/index>
-Reference <reference/index>
+Training on a cluster <hpc/index>
 API reference <api/index>
 ```

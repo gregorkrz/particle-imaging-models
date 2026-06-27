@@ -143,8 +143,7 @@ cp example.env .env
 | `WANDB_API_KEY` | Alternative to `wandb login` |
 
 `PILArNetH5Dataset` also falls back to `~/.cache/pimm/pilarnet/<revision>` when
-no data-root variable is set. See {doc}`../datasets/pilarnet` for downloading, and
-{doc}`../reference/environment` for the full variable list.
+no data-root variable is set. See {doc}`../datasets/pilarnet` for downloading.
 
 ## Troubleshooting
 

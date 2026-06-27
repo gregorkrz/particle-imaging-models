@@ -18,7 +18,7 @@ process per GPU**:
 ```text
         ┌─ node 0 ─────────────┐     ┌─ node 1 ─────────────┐
 torchrun│ rank0 rank1 rank2 r3 │ ... │ rank4 rank5 rank6 r7 │
-        │  gpu0  gpu1  gpu2 g3  │     │  gpu0  gpu1  gpu2 g3  │
+        │  gpu0  gpu1  gpu2 g3 │     │  gpu0  gpu1  gpu2 g3 │
         └──────────────────────┘     └──────────────────────┘
         nproc-per-node = 4           nnodes = 2  ⇒  world_size = 8
 ```
@@ -60,7 +60,7 @@ submitit path with `pimm submit` (see {doc}`../hpc/index`).
 
 :::{tab-item} Managed (recommended)
 ```bash
-pimm submit --site s3df \
+pimm submit --site slurm \
   --resources.nnodes 2 \
   --resources.nproc-per-node 4 \
   --resources.time 02:00:00 \
@@ -141,6 +141,7 @@ Process RNG seeds are set to `seed + rank * num_worker_per_gpu`, with
   - Composable PyTorch FSDP2 (`torch.distributed._composable.fsdp.fully_shard`)
     over a `("fsdp",)` device mesh. If `parallel.wrap_classes` is set, matching
     submodules are sharded first, then the root. Requires CUDA + FSDP2 support.
+    Untested. Probably won't work.
 ```
 
 Example config blocks:
@@ -205,7 +206,7 @@ and because the global batch size is fixed, iterations-per-epoch is identical.
 
 ```bash
 # Started on 8 GPUs; resume on 4 — just change the resource flag.
-pimm submit --site s3df --resources.nnodes 1 --resources.nproc-per-node 4 \
+pimm submit --site slurm --resources.nnodes 1 --resources.nproc-per-node 4 \
   --train.config <cfg> --run.name <existing-run> --train.resume
 ```
 
@@ -214,7 +215,7 @@ Resume strictness is controlled by `resume_strict_state` (default `True`). In
 strict mode, distributed dataloader/RNG state saved under a *different*
 `world_size` raises rather than silently remapping. The reshardable DCP path is
 the supported way to change GPU count; see
-{doc}`../checkpoints/resume_world_size` for the strict-mode escape hatch used by
+{doc}`../checkpoints/resuming` for the strict-mode escape hatch used by
 the legacy single-file format.
 :::
 

@@ -15,7 +15,7 @@ import datetime
 # -- Project information -----------------------------------------------------
 
 project = "pimm"
-author = "DeepLearnPhysics"
+author = "Samuel Young"
 copyright = f"{datetime.date.today().year}, DeepLearnPhysics"
 
 # The full version, including alpha/beta/rc tags. Keep in sync with
@@ -118,7 +118,7 @@ myst_enable_extensions = [
 myst_heading_anchors = 3
 myst_substitutions = {
     "repo_url": "https://github.com/DeepLearnPhysics/particle-imaging-models",
-    "docker_image": "youngsm/pimm:pytorch2.5.0-cuda12.4",
+    "docker_image": "youngsm/pimm:main",
 }
 
 # -- Intersphinx -------------------------------------------------------------

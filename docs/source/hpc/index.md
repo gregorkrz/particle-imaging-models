@@ -10,7 +10,7 @@ resume for you.
 - {doc}`Sites & env <sites>` — S3DF, NERSC, containers, environment variables.
 - {doc}`Chaining & QOS <chaining>` — requeue chains, walltime, accounts, partitions.
 - {doc}`Monitoring <monitoring>` — logs, W&B, Slurm introspection.
-- {doc}`Resuming <resuming>` — resume runs — including with a new config or task.
+- {doc}`Resuming <resuming>` — resume a submitted run and automatic requeue chains.
 
 ## The launcher model
 
@@ -48,7 +48,7 @@ job hits the queue.
   - Batch (`pimm submit`)
   - Interactive (`pimm submit --interactive`)
 * - How it runs
-  - Queued through submitit; returns immediately
+  - Queued with `sbatch`; returns immediately
   - Blocking `salloc`; training runs live in your terminal
 * - Best for
   - Long runs, chaining, overnight jobs
@@ -155,7 +155,8 @@ resolves to *your* checkout. See {doc}`sites`.
 - {doc}`sites` — S3DF, NERSC, containers, and environment variables.
 - {doc}`chaining` — walltime, QOS, accounts, and requeue chaining.
 - {doc}`monitoring` — watching a run.
-- {doc}`resuming` — resume a run, optionally with a new config or task.
+- {doc}`resuming` — resume a submitted run and automatic requeue chains.
+
 ```{toctree}
 :hidden:
 

@@ -1,12 +1,12 @@
-# Writing a hook
+# Contributing a hook
 
 A hook is a subclass of {py:class}`~pimm.engines.hooks.default.HookBase` with one or more lifecycle methods. The
 trainer builds it from a config dict, attaches itself at `self.trainer`, and
-calls your methods at the right point in the loop. This page covers the minimal
+calls your methods at the right point in the training loop. This page covers the minimal
 recipe, the resume-aware gotchas, and the do's and don'ts.
 
 :::{seealso}
-Read {doc}`index` for the full lifecycle diagram and the `comm_info` / `storage`
+Read {doc}`../hooks/index` for the full lifecycle diagram and the `comm_info` / `storage`
 / `writer` channels referenced below.
 :::
 
@@ -16,8 +16,7 @@ Read {doc}`index` for the full lifecycle diagram and the `comm_info` / `storage`
 2. **Register it** with `@HOOKS.register_module()`.
 3. Keep side effects in the **narrowest lifecycle method** that fits the job.
 4. **Import the module from `pimm/engines/hooks/__init__.py`** if it is a new
-   file, so the registration runs before config construction *and survives
-   resume*.
+   file, so the registration runs before config construction.
 5. Add the hook dict to `cfg.hooks`.
 
 ### Example: a periodic scalar hook
@@ -57,19 +56,6 @@ hooks = [
     dict(type="CheckpointSaverIteration", save_freq=1000),
 ]
 ```
-
-## Why the `__init__.py` import is non-negotiable
-
-Registration is a **decorator side effect**: `@HOOKS.register_module()` only runs
-when the module is imported. A config can `__import__` a module to register it
-for a fresh run — but a **resume reloads the dumped config**, which has no
-`__import__` line. The class is then unregistered and the resume crashes.
-
-:::{important}
-Always import new hook modules from `pimm/engines/hooks/__init__.py`. This is the
-same gotcha that applies to models, datasets, and transforms — see
-{doc}`../getting_started/concepts` (§2) and {doc}`../hpc/resuming`.
-:::
 
 ## Resume-aware counters
 
@@ -168,7 +154,6 @@ it would not be fine for anything load-bearing.
 
 - Don't assume `trainer.writer` exists — it's rank-0 only and may be `None`.
 - Don't rely on the generic payload to save hook attributes; it won't.
-- Don't register a hook only via a config `__import__`; it dies on resume.
 - Don't run collective saves/gathers under an `is_main_process()` guard — that
   deadlocks the other ranks.
 - Don't `cp` a fine-tune checkpoint into a live run's `model/last/`; the next atomic
@@ -176,7 +161,7 @@ it would not be fine for anything load-bearing.
 
 ## Next
 
-- {doc}`logging` and {doc}`diagnostics` — patterns to copy from the built-in
+- {doc}`../hooks/logging` and {doc}`../hooks/diagnostics` — patterns to copy from the built-in
   hooks.
-- {doc}`../checkpoints/hooks` — savers, loaders, and fine-tune remapping.
+- {doc}`../checkpoints/saving_and_loading` — savers, loaders, and fine-tune remapping.
 - {doc}`../evaluation/index` — writing an evaluator that drives `model_best`.

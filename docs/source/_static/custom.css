@@ -97,13 +97,18 @@ html[data-theme="dark"] {
   padding: 1.6rem 0 0.6rem;
   margin: 0;
 }
+.pimm-hero-logo {
+  display: block;
+  height: 96px;
+  width: auto;
+  margin: 0 0 1rem;
+}
 .pimm-hero .rubric {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 2.5rem;
   line-height: 1.15;
   font-weight: 500;          /* medium — not bold */
   letter-spacing: -1px;
-  text-transform: lowercase; /* "particle imaging models" */
   margin: 0 0 0.5rem;
   color: var(--pst-color-text-base);
   border: 0;
@@ -177,8 +182,6 @@ code.xref .pre {
   color: var(--pst-color-link) !important;
 }
 
-/* Restore the original soft-lavender announcement bar (the theme's secondary-bg,
-   which book-theme was rendering as grey). */
 .bd-header-announcement {
   background-color: var(--pst-color-secondary-bg);
   color: var(--pst-color-text-base);
@@ -217,4 +220,109 @@ code.kbd {
 .pimm-kv dt {
   color: var(--pst-color-primary);
   font-weight: 700;
+}
+
+/* --- Flow / pipeline diagrams ---------------------------------------------
+   Theme-aware (keys off --pst-* tokens, so it tracks light/dark automatically).
+   Used on the concepts page to replace the ASCII data-flow art. */
+.pimm-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.75rem 0;
+}
+.pimm-flow .pimm-node {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--pst-color-border);
+  border-radius: 9px;
+  background: var(--pst-color-surface);
+  color: var(--pst-color-text-base);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.pimm-flow .pimm-node.is-primary {
+  border-color: var(--pst-color-primary);
+  color: var(--pst-color-primary);
+  font-weight: 600;
+}
+.pimm-flow .pimm-node.is-accent {
+  border-color: var(--pst-color-secondary);
+  color: var(--pst-color-secondary);
+  font-weight: 600;
+}
+.pimm-flow .pimm-row,
+.pimm-flow .pimm-pipe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+.pimm-flow .pimm-arrow {
+  color: var(--pst-color-text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  user-select: none;
+}
+.pimm-flow .pimm-arrow.down {
+  font-size: 1.15rem;
+}
+.pimm-flow .pimm-label {
+  color: var(--pst-color-text-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pimm-flow .pimm-panel {
+  width: 100%;
+  max-width: 30rem;
+  border: 1px solid var(--pst-color-border);
+  border-radius: 11px;
+  overflow: hidden;
+  background: var(--pst-color-on-background);
+}
+.pimm-flow .pimm-panel-title {
+  padding: 0.45rem 0.9rem;
+  background: var(--pst-color-primary);
+  color: #fff;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.pimm-flow .pimm-panel ol {
+  counter-reset: pimm-step;
+  list-style: none;
+  margin: 0;
+  padding: 0.55rem 0.9rem 0.7rem;
+}
+.pimm-flow .pimm-panel ol li {
+  counter-increment: pimm-step;
+  position: relative;
+  padding: 0.18rem 0 0.18rem 1.8rem;
+  font-size: 0.86rem;
+  color: var(--pst-color-text-base);
+}
+.pimm-flow .pimm-panel ol li::before {
+  content: counter(pimm-step);
+  position: absolute;
+  left: 0;
+  top: 0.18rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--pst-color-surface);
+  border: 1px solid var(--pst-color-border);
+  color: var(--pst-color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.25rem;
+}
+.pimm-flow .pimm-panel ol li code {
+  font-size: 0.82rem;
 }

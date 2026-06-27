@@ -54,7 +54,7 @@ after_train()              ── final eval + final save, then writer closes
 **Hook order matters.** Hooks fire in the order they appear in `cfg.hooks`. The
 canonical rule: put **evaluators before savers**, so a {py:class}`~pimm.engines.hooks.checkpoint.CheckpointSaver` sees
 the `current_metric_value` an evaluator just wrote and can mark
-`model_best.pth`. See {doc}`../checkpoints/hooks`.
+`model_best.pth`. See {doc}`../checkpoints/saving_and_loading`.
 :::
 
 :::{note}
@@ -128,29 +128,18 @@ to it. It does **not** forward `modify_config`.
 - {doc}`Logging <logging>` — run naming, iteration timing, and scalar/console logging — `WandbNamer`, `IterationTimer`, `InformationWriter`, and the writer / storage / `comm_info` channels they use.
 - {doc}`Diagnostics <diagnostics>` — health monitors and runtime mutators — gradient norms, prototype usage, feature std, resources, parameter counts, plus weight-decay / dtype / annealing / profiling hooks.
 - {doc}`Evaluation <../evaluation/index>` — in-loop evaluators that write `current_metric_value`, SSL probe suites, and final held-out testing.
-- {doc}`Checkpointing <../checkpoints/hooks>` — `CheckpointLoader`, `CheckpointSaver`, `CheckpointSaverIteration` — when to save, fine-tune remapping, and `model_best.pth` selection.
+- {doc}`Checkpointing <../checkpoints/saving_and_loading>` — `CheckpointLoader`, `CheckpointSaver`, `CheckpointSaverIteration` — when to save, fine-tune remapping, and `model_best.pth` selection.
 - {doc}`Hugging Face <../checkpoints/huggingface>` — the `PushToHub` hook for uploading exported weights to the Hub during training.
-- {doc}`Writing hooks <writing_hooks>` — subclass `HookBase`, register it, import it so resume survives, and add a resume contract for state the generic payload won't save.
 
-## Registering a hook so it survives resume
+## Registering a hook
 
-A hook class becomes buildable from config the moment its
-`@HOOKS.register_module()` decorator runs. That only happens if the module is
-imported.
-
-:::{important}
-A new hook file **must be imported in `pimm/engines/hooks/__init__.py`**. A
-config-level `__import__` is not enough: a resume reloads the *dumped* config
-(which has no `__import__`), so a hook registered only via the config will be
-missing on resume and the run will crash. This mirrors the model/dataset
-registration rule in {doc}`../getting_started/concepts`.
-:::
+A hook becomes buildable once its `@HOOKS.register_module()` decorator runs, so a
+new hook file must be imported in `pimm/engines/hooks/__init__.py`.
 
 ## Next
 
 - {doc}`logging` — the everyday logging hooks.
 - {doc}`diagnostics` — model-health monitors and runtime mutators.
-- {doc}`writing_hooks` — author and register your own `HookBase`.
 - {doc}`../evaluation/index` — evaluators, probe suites, and final testing.
 
 ```{toctree}
@@ -158,5 +147,4 @@ registration rule in {doc}`../getting_started/concepts`.
 
 logging
 diagnostics
-writing_hooks
 ```

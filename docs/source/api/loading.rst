@@ -3,7 +3,7 @@ Loading & export
 ================
 
 Load trained models and turn checkpoints into portable artifacts. See
-:doc:`../models/index` and :doc:`../checkpoints/export` for guides.
+:doc:`../research_ecosystem/using_trained_models` and :doc:`../checkpoints/saving_and_loading` for guides.
 
 Top-level functions
 ===================

@@ -1,13 +1,13 @@
-# Bring your own model
+# Contributing a model
 
 This page is a practical walkthrough for adding a **new model** to pimm so the
 trainer, evaluators, checkpointer, and launcher all drive it for free. The
 contract is small: a model is a registered `nn.Module` whose
-`forward(input_dict)` consumes a {doc}`packed batch <../datasets/packed_format>`
+`forward(input_dict)` consumes a {doc}`packed batch <../datasets/data_format>`
 and returns a **dict** — with a scalar `loss` while training.
 
 :::{seealso}
-The mirror image of this page is {doc}`../datasets/bring_your_own` (custom
+The mirror image of this page is {doc}`contributing_a_dataset` (custom
 **data**). For the data → model → train story end-to-end, see the tutorial
 {doc}`../tutorials/byo_dataset_semseg`. For the mental model (registries, packed
 tensors, the trainer/model contract), read {doc}`../getting_started/concepts`.
@@ -38,7 +38,7 @@ def forward(self, input_dict, return_point=False): ...
 ```
 
 **What you receive.** `input_dict` is the packed batch (see
-{doc}`../datasets/packed_format`) — concatenated across the mini-batch, no batch
+{doc}`../datasets/data_format`) — concatenated across the mini-batch, no batch
 dimension. The keys your model can rely on:
 
 | Key | Shape | Notes |
@@ -162,23 +162,15 @@ loss's `forward(pred, target)` takes `pred` of shape `(N, C)` and `target` of
 shape `(N,)`. Need a loss that doesn't exist yet? Register one the same way you
 register a model — `@LOSSES.register_module()` — and reference it by `type`.
 
-## 4. Register it (import side effect)
+## 4. Register it
 
-The `@MODELS.register_module()` decorator only runs when the module is imported.
-Add it to `pimm/models/__init__.py`:
+Import your model from `pimm/models/__init__.py` so the
+`@MODELS.register_module()` decorator runs:
 
 ```python
 # pimm/models/__init__.py
 from .my_model.my_segmentor import MySegmentor   # noqa: F401
 ```
-
-:::{warning}
-Importing your model only from a config's `__import__` is **not enough**: resume
-replays the *dumped* config, which has no `__import__`, so `MODELS.build(...)`
-won't find your class and the run dies on restart. Register it in the package
-`__init__.py`. This is the single most common "why can't it find my model?"
-gotcha — see {doc}`../getting_started/concepts`.
-:::
 
 ## 5. Write a config
 
@@ -203,7 +195,7 @@ model = dict(
 ```
 
 See {doc}`../configuration/index` for `_base_` inheritance and overrides, and
-{doc}`../reference/model_zoo` for the registered backbone/head `type` names.
+{doc}`registered models <../api/registry/models>` for the backbone/head `type` names.
 
 ## 6. Verify forward + loss
 
@@ -246,10 +238,10 @@ the whole stack — no extra wiring:
 
 - **Distributed** — DDP and FSDP2 wrap any `nn.Module` ({doc}`../distributed/index`).
 - **Checkpoint + exact resume** — model/optimizer/RNG/dataloader state
-  ({doc}`../checkpoints/index`, {doc}`../hpc/resuming`).
+  ({doc}`../checkpoints/index`, {doc}`../checkpoints/resuming`).
 - **Export + Hub** — `pimm export` / {py:func}`~pimm.from_pretrained` round-trips it
-  ({doc}`../checkpoints/export`, {doc}`../checkpoints/huggingface`).
-- **Hooks + evaluators + HPC launch** — the full lifecycle ({doc}`../hooks/index`,
+  ({doc}`../checkpoints/exporting`, {doc}`../checkpoints/huggingface`).
+- **Hooks + evaluators + HPC launch** — the full lifecycle ({doc}`contributing_a_hook`,
   {doc}`../hpc/index`).
 
 A few caveats worth knowing:
@@ -284,20 +276,68 @@ The keys evaluators and testers look for (return the ones your task needs):
   - logging only (detached); optional
 ```
 
+## Optional: contributing a trainer
+
+The generic {py:class}`~pimm.engines.train.Trainer` (registered as
+`DefaultTrainer`) already covers supervised and self-supervised training: it
+builds the model/loader/optimizer/scheduler, runs `model(input_dict) → loss →
+backward → step`, and drives every hook. **You almost never need a custom
+trainer** — a new task is usually a new *model*, not a new loop.
+
+The exception is when the *optimization procedure itself* is different — most
+notably reinforcement learning. {py:class}`~pimm.engines.train.GRPOTrainer`
+replaces the single supervised step with a rollout-based loop: each batch is
+sampled into a group of trajectories, then the policy is updated
+`policy_updates_per_rollout` times over the cached rollout, with GRPO scalar
+metrics reduced across ranks by key-specific ops (min/max/mean).
+
+A custom trainer subclasses `Trainer`, registers with
+`@TRAINERS.register_module()`, and overrides only the methods that differ —
+typically `run_step` (the per-batch optimization) and, if the step count
+changes, `build_scheduler`:
+
+```python
+from pimm.engines.train import TRAINERS, Trainer
+
+
+@TRAINERS.register_module("MyRLTrainer")
+class MyRLTrainer(Trainer):
+    def build_scheduler(self):
+        # e.g. size the schedule to (batches * epochs * updates_per_rollout)
+        ...
+        return super().build_scheduler()
+
+    def run_step(self):
+        # sample a rollout, compute a loss, backward + optimizer/scheduler step,
+        # and stash scalar metrics in self.comm_info["model_output_dict"].
+        ...
+```
+
+Select it from the config's `train` block — `cfg.train.type` is the registry
+name the launcher builds:
+
+```python
+train = dict(type="MyRLTrainer", policy_updates_per_rollout=4)
+```
+
+It inherits model/loader/optimizer construction and the full hook lifecycle from
+`Trainer`. See {py:class}`~pimm.engines.train.GRPOTrainer` in the source for a
+complete, production example.
+
 ## Checklist
 
 1. Subclass `nn.Module`; register with `@MODELS.register_module("MyModel")`.
 2. `forward(self, input_dict, return_point=False)` → `Point(input_dict)` → backbone → head.
 3. Return `{"loss": ...}` in training; add task logits for eval/test.
 4. Apply losses via `self.criteria = build_criteria(criteria)`.
-5. Import the model module in `pimm/models/__init__.py` (survives resume).
+5. Import the model module in `pimm/models/__init__.py`.
 6. Write a config selecting it by `type`, with `backbone` + `criteria`.
 7. Verify forward + `loss.backward()` on a synthetic batch.
 
 ## See also
 
-- {doc}`../datasets/bring_your_own` — the data-side mirror of this page.
+- {doc}`contributing_a_dataset` — the data-side mirror of this page.
 - {doc}`../tutorials/byo_dataset_semseg` — the full end-to-end tutorial.
 - {doc}`../getting_started/concepts` — registries, packed tensors, the trainer contract.
-- {doc}`../datasets/packed_format` — the exact batch your `forward` receives.
-- {doc}`../reference/model_zoo` — registered backbones and heads to build on.
+- {doc}`../datasets/data_format` — the exact batch your `forward` receives.
+- {doc}`registered models <../api/registry/models>` — registered backbones and heads to build on.

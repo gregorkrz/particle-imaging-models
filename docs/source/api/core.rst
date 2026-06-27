@@ -105,6 +105,30 @@ The checkpoint manager and the resume-state schema. See
 
    TrainState
 
+Data loading & collation
+=========================
+
+The collate functions that pack ragged point-cloud samples into a batch, and the
+checkpointable sampler that lets the training loader resume mid-epoch. See
+:doc:`../research_ecosystem/contributing_a_dataset`.
+
+.. currentmodule:: pimm.datasets.utils
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   collate_fn
+
+.. currentmodule:: pimm.datasets.stateful
+
+.. autosummary::
+   :toctree: generated
+   :template: pimm_class.rst
+   :nosignatures:
+
+   StatefulRandomSampler
+
 Distributed helpers
 ===================
 

@@ -202,7 +202,7 @@ def _load_registries():
          "Training lifecycle hooks. See :doc:`../../hooks/index`."),
         ("losses", "Losses", LOSSES, "criteria=[dict(type=...)]",
          "Loss functions assembled by ``build_criteria``. See "
-         ":doc:`../../models/index`."),
+         ":doc:`../../research_ecosystem/contributing_a_model`."),
         ("trainers", "Trainers", TRAINERS, "train = dict(type=...)",
          "Trainer classes selected by ``train.type``. See "
          ":doc:`../../distributed/index`."),

@@ -13,7 +13,7 @@ def main(argv: list[str] | None = None) -> int:
             "usage: pimm <command> [args]\n\n"
             "commands:\n"
             "  launch   run training locally or inside an allocation\n"
-            "  submit   submit training to Slurm through submitit\n"
+            "  submit   submit training to Slurm\n"
             "  export   export model weights (optionally push to the HF Hub)"
         )
         return 0

@@ -110,5 +110,5 @@ followed by a fresh attempt picking up from the latest complete checkpoint.
 
 ## Next
 
-- {doc}`resuming` — what's restored on resume, and resuming with a new config.
+- {doc}`../checkpoints/resuming` — what's restored on resume.
 - {doc}`../checkpoints/index` — checkpoint completeness and formats.

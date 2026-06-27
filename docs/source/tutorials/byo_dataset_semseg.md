@@ -1,4 +1,4 @@
-# Bring your own dataset → PTv3 semantic segmentation
+# Training a semantic segmentation model
 
 **Goal.** You have your own detector point clouds — 3D hits with an energy (or
 charge) feature and a per-point class label — and you want to train a
@@ -6,7 +6,7 @@ charge) feature and a per-point class label — and you want to train a
 those classes. By the end you'll have a registered dataset, a config, and a
 trained, evaluated model.
 
-This is the introductory tutorial. It assumes you've read
+This tutorial assumes you've read
 {doc}`../getting_started/concepts` and have pimm {doc}`installed
 <../getting_started/installation>`.
 
@@ -22,7 +22,7 @@ your raw events ─▶ Reader ─▶ Dataset ─▶ Compose(transform) ─▶ pa
 ## 0. What the model needs from your data
 
 A semantic-segmentation batch must arrive as a packed dict
-(see {doc}`../datasets/packed_format`):
+(see {doc}`../datasets/data_format`):
 
 | Key | Shape | Meaning |
 |-----|-------|---------|
@@ -33,15 +33,53 @@ A semantic-segmentation batch must arrive as a packed dict
 
 Everything below exists to produce that batch from *your* files.
 
-## 1. Wrap your data in a Dataset
+## 1. Write a Dataset class
 
-If your data is already per-sample `.npy` assets (`coord.npy`, `segment.npy`, …),
-you can skip straight to `DefaultDataset` (see {doc}`../datasets/builtin_datasets`).
-For a custom format (HDF5, ROOT-exported numpy, …), write a small reader +
-dataset. Here's a minimal HDF5 example:
+A pimm dataset is **one** ordinary `torch.utils.data.Dataset` registered in the
+`DATASETS` registry — no separate reader, no base class to satisfy. Its whole job
+is to turn an index into a flat numpy dict (`coord`, your feature, `segment`, …)
+and run a transform pipeline that produces the packed batch from section 0. The
+contract is small — these are the only methods that matter:
+
+```{list-table}
+:header-rows: 1
+:widths: 38 14 48
+
+* - Method
+  - Required?
+  - What it does / returns
+* - `__init__(self, split, data_root, transform=None, …)`
+  - yes
+  - Index your events (cheap, no open file handles) and build the pipeline with
+    `self.transform = Compose(transform)`.
+* - `get_data(self, idx)`
+  - by convention
+  - One **raw** event as a flat `dict[str, np.ndarray]`: `coord` `(N, 3)`, your
+    feature(s) e.g. `energy` `(N, 1)`, `segment` `(N,)`, plus `name` / `split`
+    metadata strings. Raw numpy, before any transform.
+* - `__getitem__(self, idx)`
+  - yes
+  - `return self.transform(self.get_data(idx))` — the transformed sample the
+    loader collates into a packed batch.
+* - `__len__(self)`
+  - yes
+  - Number of samples (multiply by `loop` if you support epoch-stretching).
+```
+
+Two rules keep the rest working: build the pipeline with `Compose(transform)` in
+`__init__` (pimm passes you the raw **list of dicts**, never a prebuilt
+`Compose`), and return **raw numpy** from `get_data` — `ToTensor` converts late
+in the pipeline and the geometry transforms need numpy. Name your primary
+spatial array `coord` so transforms like `NormalizeCoord` / `GridSample` find it.
+
+Here's the whole class — discovery + indexing in `__init__`, one raw event in
+`get_data`, transforms applied in `__getitem__` (the same shape as the built-in
+`PILArNetH5Dataset`):
 
 ```python
 # pimm/datasets/my_tpc.py
+import glob
+
 import h5py
 import numpy as np
 from torch.utils.data import Dataset
@@ -60,7 +98,7 @@ class MyTPCDataset(Dataset):
         self.min_points = min_points
         self.loop = loop
         # Discover shards and build an event index. Open files lazily per worker.
-        self.files = sorted(__import__("glob").glob(f"{data_root}/*{split}*.h5"))
+        self.files = sorted(glob.glob(f"{data_root}/*{split}*.h5"))
         self._index = self._build_index()
         self._handles = {}
         self.max_len = max_len
@@ -99,11 +137,7 @@ class MyTPCDataset(Dataset):
 
 :::{important}
 **Register where the package imports it.** Add `from . import my_tpc` to
-`pimm/datasets/__init__.py` so the `@DATASETS.register_module()` decorator runs
-on import — not just via a config `__import__`. Configs reload the *dumped*
-config on resume, which has no `__import__`, so a config-only import breaks
-resume. (See {doc}`../datasets/bring_your_own` for the full reader/dataset
-pattern.)
+`pimm/datasets/__init__.py` so the `@DATASETS.register_module()` decorator runs.
 :::
 
 ## 2. Re-derive your transforms
@@ -309,7 +343,7 @@ pimm launch --train.config mytpc/semseg-ptv3 --run.name semseg-ptv3-v1 \
   --train.resume
 ```
 
-See {doc}`../hpc/resuming`.
+See {doc}`../checkpoints/resuming`.
 
 ## 7. Evaluate the trained model
 
@@ -321,8 +355,8 @@ This runs `pimm/test.py` against the experiment's code snapshot and the
 `SemSegTester` from your config. See {doc}`../evaluation/index`.
 
 To run inference in your own script, load with {py:func}`~pimm.from_pretrained` and reproduce
-the **val** transform — see {doc}`../models/index` and
-{doc}`../models/dataset_format`.
+the **val** transform — see {doc}`../research_ecosystem/using_trained_models` and
+{doc}`../datasets/transforms`.
 
 ## 8. (Optional) Fine-tune from a pretrained backbone
 
@@ -347,7 +381,7 @@ pimm launch --train.config mytpc/semseg-ptv3 --run.name semseg-ptv3-pt \
 Because `--train.resume` is **not** set, only weights load — optimizer and
 schedule start fresh, which is what you want for a new task. A remap that matches
 zero parameters raises, so a silent random-init can't happen. See
-{doc}`../checkpoints/hooks` and {doc}`../hpc/resuming`.
+{doc}`../checkpoints/saving_and_loading`.
 
 ## Where to go next
 

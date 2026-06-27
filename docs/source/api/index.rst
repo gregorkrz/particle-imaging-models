@@ -2,16 +2,8 @@
 API reference
 =============
 
-Reference for pimm's public Python API, generated from the source docstrings
-with Sphinx ``autodoc`` (the same setup torchrl uses). For narrative guides,
+Reference for pimm's public Python API. For narrative guides,
 start with :doc:`../getting_started/index`.
-
-.. note::
-
-   The API reference imports ``pimm``, so build it from the project environment
-   (the one that can ``import pimm``), e.g.
-   ``conda run -n pointcept-torch2.5.0-cu12.4 make -C docs html``. The
-   per-registry pages are regenerated on every build from the live registries.
 
 Registries
 ==========
@@ -21,18 +13,18 @@ through small registries (see :doc:`../getting_started/concepts`). Each page
 below is generated from the live registry, grouped by role, and lists every
 registered ``type`` with a link to its autodoc page.
 
-- :doc:`Models <registry/models>` — models & backbones (``model = dict(type=...)``).
-- :doc:`Datasets <registry/datasets>` — dataset classes (``data.train = dict(type=...)``).
+- :doc:`Models <registry/models>` — models & backbones
+- :doc:`Datasets <registry/datasets>` — dataset classes
 - :doc:`Transforms <registry/transforms>` — transform pipeline steps.
-- :doc:`Hooks <registry/hooks>` — training lifecycle hooks.
-- :doc:`Losses <registry/losses>` — loss functions for ``build_criteria``.
-- :doc:`Trainers <registry/trainers>` — trainer classes (``train.type``).
+- :doc:`Hooks <registry/hooks>` — training lifecycle hooks
+- :doc:`Losses <registry/losses>` — loss functions for ``build_criteria``
+- :doc:`Trainers <registry/trainers>` — trainer classes
 
 Core API
 ========
 
-Hand-curated reference for the functions and classes that are not built from a
-registry — model loading/export and the shared building blocks.
+Some important functions and classes that are not built from a
+registry.
 
 - :doc:`Loading & export <loading>` — :func:`~pimm.from_pretrained`,
   :func:`~pimm.save_pretrained`, :func:`~pimm.push_to_hub`, and the state-dict

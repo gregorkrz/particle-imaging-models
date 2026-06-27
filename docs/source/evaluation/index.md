@@ -30,7 +30,7 @@ A {py:class}`~pimm.engines.hooks.checkpoint.CheckpointSaver` reads these *after*
 :::{important}
 **Order: evaluator before saver.** If the saver runs first it sees a stale (or
 missing) metric and never marks a best checkpoint. This is the single most
-common evaluation-config mistake — see {doc}`../checkpoints/hooks`.
+common evaluation-config mistake — see {doc}`../checkpoints/saving_and_loading`.
 :::
 
 ```text
@@ -238,6 +238,6 @@ chosen by `cfg.test.type`.
 
 ## Next
 
-- {doc}`../checkpoints/hooks` — savers and the `model_best.pth` selection logic.
-- {doc}`../hooks/writing_hooks` — write a custom evaluator that drives selection.
+- {doc}`../checkpoints/saving_and_loading` — savers and the `model_best.pth` selection logic.
+- {doc}`../research_ecosystem/contributing_a_hook` — write a custom evaluator that drives selection.
 - {doc}`../datasets/index` — the held-out split conventions probes depend on.

@@ -1,10 +1,18 @@
-# The packed format
+# Data format
 
 Detector events are **variable length** — one neutrino interaction might be 100
-hits, the next 10,000. Padding every event to a fixed size would waste memory
-and inject meaningless zeros. So pimm batches point clouds **packed**: every
-batched quantity is 2D `(N, C)` instead of 3D `(B, N, C)`, and an `offset`
-tensor marks where each event ends.
+hits, the next 10,000. The usual way to batch variable-length events for
+stochastic gradient descent is to **pad** them into a dense 3D tensor of shape
+`(B, N, C)` — batch size `B`, a fixed maximum `N` points per event, and `C`
+per-point features. When event sizes vary widely that wastes a lot of memory on
+meaningless zeros.
+
+So pimm batches point clouds **packed**: every batched quantity is 2D `(N, C)`
+instead of 3D `(B, N, C)` — the concatenation of all events into one flat tensor
+— with an `offset` tensor marking where each event ends. This is the
+[Compressed Sparse Row (CSR)](<https://en.wikipedia.org/wiki/Sparse_matrix#Compressed_sparse_row_(CSR,_CRS_or_Yale_format)>)
+layout, the same one graph neural networks use because it operates naturally on
+variable-length objects.
 
 ```text
 event 0: 100 pts ┐
@@ -12,9 +20,24 @@ event 1: 150 pts ├─▶  coord:  (330, 3)   feat: (330, C)
 event 2:  80 pts ┘     offset: [100, 250, 330]   # cumulative
 ```
 
+<p align="center">
+    <img alt="packed offsets" class="only-light" src="https://raw.githubusercontent.com/pointcept/assets/main/pointcept/offset.png" width="480">
+    <img alt="packed offsets" class="only-dark" src="https://raw.githubusercontent.com/pointcept/assets/main/pointcept/offset_dark.png" width="480">
+</p>
+
 This is the contract that lets the *same* model run on argon TPCs, water
 Cherenkov PMT arrays, and 2D wire-plane data — only the meaning of `coord` and
-`feat` changes, never the batch layout. See {doc}`../getting_started/concepts`.
+`feat` changes, never the batch layout. See {doc}`../getting_started/concepts`
+for where this sits in the wider picture.
+
+:::{warning}
+**Packed memory is spiky.** Because the batch size *in points* depends on which
+events land together, VRAM use isn't constant and the allocator
+[fragments](<https://en.wikipedia.org/wiki/Fragmentation_(computing)>) — a batch
+with more hits than usual can OOM you partway through a run. Log VRAM over
+training with
+{py:class}`~pimm.engines.hooks.resources.ResourceUtilizationLogger`.
+:::
 
 ## The offset vector
 
@@ -34,8 +57,10 @@ tensors, so event `i` occupies rows `offset[i-1] : offset[i]` (with an implicit
 :::{tip}
 `offset` is conceptually identical to PyG's `batch` vector — one labels event
 boundaries by cumulative count, the other labels each point with its event id.
-pimm's {py:class}`~pimm.models.utils.structure.Point` structure (`pimm/models/utils/structure.py`) derives one from
-the other, so backbones can use whichever they prefer.
+pimm's {py:class}`~pimm.models.utils.structure.Point` structure
+(`pimm/models/utils/structure.py`) derives one from the other, and also carries
+the sparse-CNN bookkeeping (serialized order, batch indices) that backbones like
+PT-v3 need — so backbones can use whichever representation they prefer.
 :::
 
 ## A model-facing batch
@@ -105,8 +130,8 @@ Note what is *and is not* batched:
 
 ## How `collate_fn` builds it
 
-The collate functions live in `pimm/datasets/utils.py`. `collate_fn(batch,
-mix_prob=0)` walks each sample recursively and applies a few rules:
+The collate functions live in `pimm/datasets/utils.py`. {py:func}`~pimm.datasets.utils.collate_fn`
+walks each sample recursively and applies a few rules:
 
 ```{list-table}
 :header-rows: 1
@@ -152,22 +177,19 @@ without the underscore must be collatable.
 
 * - Function
   - Purpose
-* - `collate_fn`
+* - {py:func}`~pimm.datasets.utils.collate_fn`
   - the base recursive collator described above.
-* - `point_collate_fn`
+* - {py:func}`~pimm.datasets.utils.point_collate_fn`
   - wraps `collate_fn` and adds `mix_prob`, which can merge paired point clouds
     (adjusting instance ids and shrinking the `offset` vector) for mix-style
     augmentation.
-* - `inseg_collate_fn`
-  - for instance-segmentation datasets that return a **list of query
-    dictionaries per sample**; it flattens those lists, then calls
-    `collate_fn`. `InsegTrainer` swaps this in.
 ```
 
 `mix_prob` is supplied from the **top-level** config, not the dataset — it is a
-loader-side knob. The default training loader uses `StatefulRandomSampler` +
-`StatefulDataLoader` so a mid-epoch checkpoint restores the exact sampler
-position; validation and testing use plain `DataLoader`s.
+loader-side knob. The default training loader uses
+{py:class}`~pimm.datasets.stateful.StatefulRandomSampler` + `StatefulDataLoader`
+so a mid-epoch checkpoint restores the exact sampler position; validation and
+testing use plain `DataLoader`s.
 
 ## Verifying the contract
 
@@ -189,4 +211,4 @@ assert batch["offset"][-1].item() == batch["coord"].shape[0]
 
 - {doc}`transforms` — {py:class}`~pimm.datasets.transform.base.Collect` is what stamps the per-sample offset and `feat`.
 - {doc}`../getting_started/concepts` — the packed idea in the wider picture.
-- {doc}`bring_your_own` — verifying a new dataset's batch.
+- {doc}`../research_ecosystem/contributing_a_dataset` — verifying a new dataset's batch.

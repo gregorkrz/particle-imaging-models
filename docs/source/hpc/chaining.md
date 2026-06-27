@@ -133,4 +133,4 @@ the formats.
 ## Next
 
 - {doc}`monitoring` — watch the chain progress.
-- {doc}`resuming` — what exactly is restored, and resuming with a new config.
+- {doc}`resuming` — resume a submitted run; {doc}`../checkpoints/resuming` for what's restored.

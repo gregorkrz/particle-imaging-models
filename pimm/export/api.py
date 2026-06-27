@@ -254,10 +254,6 @@ def _infer_model_config(
 def _state_dict_from_model_or_checkpoint(
     model_or_checkpoint: Any,
     device: str = "cpu",
-    *,
-    model_config: Optional[Mapping[str, Any]] = None,
-    config_path: Optional[PathLike] = None,
-    model_cls: Optional[Type[torch.nn.Module]] = None,
 ) -> Dict[str, Any]:
     """Extract a cleaned state dict from a model, mapping, or checkpoint path."""
     if isinstance(model_or_checkpoint, torch.nn.Module):
@@ -337,8 +333,6 @@ def save_pretrained(
     save_directory: PathLike,
     *,
     cfg: Any = None,
-    model_config: Optional[Mapping[str, Any]] = None,
-    model_cls: Optional[Type[torch.nn.Module]] = None,
     config_path: Optional[PathLike] = None,
     training_config: Optional[Mapping[str, Any]] = None,
     safe_serialization: bool = True,
@@ -359,13 +353,7 @@ def save_pretrained(
 
     checkpoint_path = Path(model_or_checkpoint) if isinstance(model_or_checkpoint, (str, Path)) else None
 
-    state_dict = _state_dict_from_model_or_checkpoint(
-        model_or_checkpoint,
-        device=device,
-        model_config=model_config,
-        config_path=config_path,
-        model_cls=model_cls,
-    )
+    state_dict = _state_dict_from_model_or_checkpoint(model_or_checkpoint, device=device)
 
     if safe_serialization:
         if not _HAS_SAFETENSORS:

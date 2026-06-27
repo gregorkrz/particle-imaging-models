@@ -5,10 +5,10 @@ multi-GPU, and multi-node all write the same thing — so resume is predictable
 regardless of how many devices you used. Checkpoints are atomic, capture the
 *full* training state, and (in the default format) reshard across world sizes.
 
-- {doc}`Saving <hooks>` — saver hooks, cadence, best-metric snapshots.
-- {doc}`Export <export>` — `pimm export`, `save_pretrained`, portable weights.
+- {doc}`Saving & loading <saving_and_loading>` — saver/loader hooks, cadence, fine-tune key remapping, programmatic loading.
+- {doc}`Resuming <resuming>` — exact resume, mid-epoch, and resharding across a world-size change.
+- {doc}`Exporting <exporting>` — `pimm export`, `save_pretrained`, portable weights.
 - {doc}`Hugging Face <huggingface>` — auto-push during training, `hf://` fine-tune.
-- {doc}`Across world sizes <resume_world_size>` — reshard, or the legacy escape hatch.
 
 ## What's in a checkpoint
 
@@ -30,7 +30,7 @@ everything needed to *continue exactly*, not just the weights:
 }
 ```
 
-This is what makes {doc}`exact resume <../hpc/resuming>` possible — RNG (Python /
+This is what makes {doc}`exact resume <resuming>` possible — RNG (Python /
 NumPy / CPU / all CUDA), the stateful dataloader position, the step counter, and
 samples-seen all travel with the optimizer state. Helper functions in
 `pimm/utils/checkpoints.py` read both v3 and older flat layouts.
@@ -124,8 +124,7 @@ all captured, a resumed run does not re-see data, re-roll augmentations, or jump
 the LR schedule. Combined with `seed` and `deterministic=True`, this gives
 reproducible long runs across timeouts and requeues.
 
-See {doc}`../hpc/resuming` for the resume mechanics and
-{doc}`resume_world_size` for changing GPU count.
+See {doc}`resuming` for the resume mechanics, including changing GPU count.
 
 ## Quick reference
 
@@ -151,15 +150,16 @@ See {doc}`../hpc/resuming` for the resume mechanics and
 
 ## Next
 
-- {doc}`hooks` — control *when* checkpoints are written.
-- {doc}`export` — turn a checkpoint into a portable pretrained artifact.
+- {doc}`saving_and_loading` — control *when* checkpoints are written, and how to load them.
+- {doc}`resuming` — continue an interrupted run, including on a different GPU count.
+- {doc}`exporting` — turn a checkpoint into a portable pretrained artifact.
 - {doc}`huggingface` — push/pull checkpoints to the Hub.
 
 ```{toctree}
 :hidden:
 
-hooks
-export
+saving_and_loading
+resuming
+exporting
 huggingface
-resume_world_size
 ```

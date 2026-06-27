@@ -71,16 +71,16 @@ from pimm.export import push_to_hub
 push_to_hub(
     model,                                  # module, checkpoint, or export dir
     "org-or-user/my-pimm-model",
-    model_config=dict(type="my-model-v1", hidden_dim=256),
+    training_config=cfg,                    # forwarded to save_pretrained → config.json
     private=True,
 )
 ```
 
 If the first argument is already an export directory (contains a weights file),
 pimm uploads it as-is. Otherwise it runs {py:func}`~pimm.save_pretrained` into a temp/given
-directory and uploads the allowed files (weights, `config.json`,
-`README.md`). Pass `private=` and an optional `revision`. Requires
-`huggingface_hub` and Hub authentication.
+directory (forwarding any `save_pretrained` kwargs such as `training_config`) and
+uploads the allowed files (weights, `config.json`, `README.md`). Pass `private=`
+and an optional `revision`. Requires `huggingface_hub` and Hub authentication.
 
 `pimm export` can also push directly — see `pimm export --help` for the
 `--push-to-hub` options.
@@ -103,7 +103,7 @@ pimm submit --site nersc \
 
 `<your-org>/...` is a placeholder for your own pushed Sonata checkpoint. Published
 task checkpoints (loaded with `from_pretrained` for inference) are on the Hub —
-see the {doc}`../reference/model_zoo`.
+see {doc}`../research_ecosystem/using_trained_models`.
 :::
 
 :::{tab-item} Build a ready-to-use model
@@ -120,8 +120,9 @@ model = pimm.from_pretrained("hf://org-or-user/my-model@v2")  # with a revision
 
 Download location for Hub loads is `PIMM_HF_CACHE` (else HF's `HF_HOME`). Hub
 loading requires the optional `huggingface_hub` package. For the full
-`from_pretrained` contract (config precedence, drift tolerance), see
-{doc}`../models/index`.
+`from_pretrained` contract (config precedence, drift tolerance) see
+{doc}`../research_ecosystem/using_trained_models`; for checkpoint-side loading (the `CheckpointLoader` hook,
+key remapping, submodel/partial loads) see {doc}`saving_and_loading`.
 
 ## Cross-cluster recipe
 
@@ -138,5 +139,5 @@ verified bitwise on a Sonata-L checkpoint.
 
 ## Next
 
-- {doc}`../models/index` — `from_pretrained` and loading data the right way.
-- {doc}`export` — building the export artifact you push.
+- {doc}`../research_ecosystem/using_trained_models` — `from_pretrained` and loading data the right way.
+- {doc}`exporting` — building the export artifact you push.

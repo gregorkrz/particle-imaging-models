@@ -221,5 +221,5 @@ Overlay is an augmentation toggle; leave it off for clean evaluation.
 
 - {doc}`transforms` — the {py:class}`~pimm.datasets.transform.spatial.NormalizeCoord` / `LogTransform` / {py:class}`~pimm.datasets.transform.spatial.GridSample`
   pipeline these keys flow through.
-- {doc}`packed_format` — how the per-event dicts become a batch.
-- {doc}`builtin_datasets` — other registered datasets and the registry.
+- {doc}`data_format` — how the per-event dicts become a batch.
+- {doc}`All registered datasets <../api/registry/datasets>` — other registered datasets, generated from the registry.

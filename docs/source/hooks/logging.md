@@ -34,7 +34,7 @@ The usual division of labour: write a scalar to `trainer.storage` when you want
 :::{note}
 `trainer.writer` is built on the **main process only**. Always guard direct
 writes with `is_main_process()` (and check the writer is not `None`). See
-{doc}`writing_hooks`.
+{doc}`../research_ecosystem/contributing_a_hook`.
 :::
 
 A representative logging stack:
@@ -149,6 +149,6 @@ Train: [3/50][120/1563] data_time: 0.01 batch_time: 0.42 remain: 02:13:44 loss: 
 
 - {doc}`diagnostics` — gradient norms, feature std, resources, and runtime
   mutators.
-- {doc}`writing_hooks` — emit your own scalars and curves from a custom hook.
+- {doc}`../research_ecosystem/contributing_a_hook` — emit your own scalars and curves from a custom hook.
 - {doc}`../evaluation/index` — evaluators that turn validation into a selection
   metric.

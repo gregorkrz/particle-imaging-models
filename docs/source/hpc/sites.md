@@ -189,8 +189,7 @@ The job sets `OMP_NUM_THREADS` to the per-GPU value (`cpus_per_proc`).
 ## Environment variables
 
 `scripts/train.sh` / `test.sh` source a repo-root `.env` if present (existing
-shell variables take priority). Site YAML also injects env vars into the job. The
-full variable list is in {doc}`../reference/environment`.
+shell variables take priority). Site YAML also injects env vars into the job.
 
 ```{list-table}
 :header-rows: 1

@@ -14,15 +14,14 @@ dataset  ──▶  event-level fusion, label selection, standard keys + metadat
 transform──▶  augmentation, tensor conversion, final key/feature selection
 ```
 
-If you read one page first, read {doc}`packed_format` — the `(N, C)` + `offset`
+If you read one page first, read {doc}`data_format` — the `(N, C)` + `offset`
 contract is the single idea that lets the same models run on argon TPCs, water
 Cherenkov detectors, and wire-plane data.
 
-- {doc}`Packed format <packed_format>` — the `(N, C)` + cumulative `offset` contract, and how `collate_fn` builds it.
-- {doc}`Transforms <transforms>` — `Compose`, common transforms, `index_valid_keys`, and the final `Collect`.
+- {doc}`Data format <data_format>` — the `(N, C)` + cumulative `offset` contract, and how `collate_fn` builds it.
+- {doc}`Transforms <transforms>` — `Compose`, common transforms, `index_valid_keys`, the final `Collect`, and reproducing the pipeline for inference.
 - {doc}`PILArNet-M <pilarnet>` — download, revisions v1/v2/v3, env vars, output keys, and event overlay.
-- {doc}`Built-in datasets <builtin_datasets>` — `DefaultDataset`, `ConcatDataset`, JAXTPC, LUCiD, UBooNE, and the registry.
-- {doc}`Bring your own <bring_your_own>` — a numbered walkthrough: write a reader, a dataset, register, configure, verify.
+- {doc}`All registered datasets <../api/registry/datasets>` — `PILArNetH5Dataset`, `DefaultDataset`, `ConcatDataset`, JAXTPC, LUCiD, UBooNE, and the rest, generated from the `DATASETS` registry.
 - {doc}`Core concepts <../getting_started/concepts>` — how datasets fit into the registry / config / trainer picture.
 
 ## The common path
@@ -79,18 +78,15 @@ mid-epoch resume; validation and testing use plain `DataLoader`s. See
 
 ## Next
 
-- {doc}`packed_format` — the batch contract every model speaks.
+- {doc}`data_format` — the batch contract every model speaks.
 - {doc}`transforms` — augmentation and the final `Collect` projection.
 - {doc}`pilarnet` — the primary LArTPC dataset.
-- {doc}`builtin_datasets` — the registered classes and how they differ.
-- {doc}`bring_your_own` — add a dataset end to end.
+- {doc}`All registered datasets <../api/registry/datasets>` — every registered class, generated from the registry.
 
 ```{toctree}
 :hidden:
 
-packed_format
+data_format
 transforms
 pilarnet
-builtin_datasets
-bring_your_own
 ```

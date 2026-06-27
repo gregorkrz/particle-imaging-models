@@ -6,8 +6,8 @@ The [Panda Detector](https://arxiv.org/abs/2512.01324) is a Mask2Former-style
 model adapted for low-energy deposits: a set of learned queries attend over
 backbone features and each emits a mask + class (+ optionally momentum/vertex).
 
-This is the advanced tutorial. Do {doc}`byo_dataset_semseg` first — it
-establishes the dataset, transform, and launch patterns this one builds on.
+This assumes you've read {doc}`byo_dataset_semseg` first or understand how
+datasets, transforms, and launch patterns in pimm work.
 
 ```text
 points ─▶ PT-v3m2 encoder (frozen, Sonata-pretrained) ─▶ point features
@@ -65,7 +65,7 @@ dict(type="Collect",
 **Bringing your own data?** Your reader must produce a per-point `instance` array
 (integers, one per particle, with a background/ignore convention) in addition to
 the class label. Add any new point-aligned keys to `index_valid_keys` so they
-survive subsampling transforms. See {doc}`../datasets/bring_your_own`.
+survive subsampling transforms. See {doc}`../research_ecosystem/contributing_a_dataset`.
 :::
 
 ## 2. Start from the reference config
@@ -178,14 +178,14 @@ pimm submit --site s3df \
 Sonata SSL checkpoint — its `student.backbone.*` keys are what the
 `CheckpointLoader` remap below expects. Produce one with a `configs/panda/pretrain/`
 recipe, or run the `-scratch` variant. Released task detectors for *inference*
-(loaded with `from_pretrained`) are on the Hub — see the {doc}`../reference/model_zoo`.
+(loaded with `from_pretrained`) are on the Hub — see {doc}`../research_ecosystem/using_trained_models`.
 :::
 
 :::{important}
 A remap matching **zero** parameters raises — so a silent random-init can't
 happen. After launch, confirm the load reported no missing backbone keys, and
 judge success by the decoder losses (`loss_cls`, `dice`) trending down, not just
-the absence of errors. See {doc}`../hpc/resuming`.
+the absence of errors. See {doc}`../checkpoints/saving_and_loading`.
 :::
 
 ### The three fine-tuning variants
@@ -331,7 +331,7 @@ trained. `postprocess()` takes more knobs (`conf_threshold`, NMS, `min_points`, 
 that otherwise default to the model's `postprocess_cfg`.
 :::
 
-See {doc}`../models/index` and {doc}`../models/dataset_format`.
+See {doc}`../research_ecosystem/using_trained_models` and {doc}`../datasets/transforms`.
 
 ## Recap
 
@@ -346,5 +346,5 @@ You've gone from per-point labels to per-instance masks + PID by:
 ## See also
 
 - {doc}`byo_dataset_semseg` — the foundation this builds on.
-- {doc}`../reference/model_zoo` — the `detector-v4` model and its config variants.
+- {doc}`../research_ecosystem/using_trained_models` — the published `detector-v4` checkpoints.
 - {doc}`../evaluation/index` — panoptic metrics in depth.

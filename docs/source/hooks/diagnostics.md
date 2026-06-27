@@ -217,6 +217,6 @@ a short diagnostic run and remove it from `cfg.hooks` for production training.
 ## Next
 
 - {doc}`logging` — the everyday console / scalar / TensorBoard hooks.
-- {doc}`writing_hooks` — build your own monitor with forward hooks and a clean
+- {doc}`../research_ecosystem/contributing_a_hook` — build your own monitor with forward hooks and a clean
   `after_train()` teardown.
-- {doc}`../checkpoints/hooks` — savers, and why evaluators come before them.
+- {doc}`../checkpoints/saving_and_loading` — savers, and why evaluators come before them.
