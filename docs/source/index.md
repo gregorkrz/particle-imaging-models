@@ -39,6 +39,41 @@ pre-training, semantic and panoptic segmentation, exact-resume distributed
 training, and a launch layer that runs the *same* code locally, on a multi-GPU
 node, or across many HPC nodes.
 
+## Minimal quick start
+
+```bash
+git clone https://github.com/deeplearnphysics/particle-imaging-models.git
+cd particle-imaging-models
+pip install -e . # install to some base environment (outside of the container)
+
+# if using singularity/apptainer
+apptainer pull /path/to/pimm.sif docker://youngsm/pimm:main
+
+# download PILArNet-M dataset
+python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dataset
+
+# deal with env vars: MODEL_DIR, WANDB_API_KEY, HF_TOKEN, HF_HOME, 
+cp example.env .env && nano .env
+
+# launch a local run on 4 GPUs
+apptainer exec --nv \
+  --bind "$PWD:/opt/pimm/src" \
+  --pwd /opt/pimm/src \
+  /path/to/pimm.sif \
+  pimm launch \
+    --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
+    --resources.nproc-per-node 4
+
+# or edit launch/sites/slurm.yaml and launch
+pimm submit --site slurm \
+    --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
+    --resources.nnodes 1 \
+    --resources.nproc-per-node 4 \
+    --resources.time 24:00:00 \
+    --slurm.account account \
+    --slurm.partition ampere 
+```
+
 ## What's inside
 
 - {doc}`Quick start <getting_started/index>` — install from source or a
