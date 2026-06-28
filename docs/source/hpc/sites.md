@@ -18,19 +18,89 @@ launch/
 
 ## `local` — your laptop or a single node
 
-The default site. No Slurm directives, no container wrapper:
+The default site for `pimm launch`. No Slurm directives, no container wrapper —
+runs in your active environment on the current node:
 
 - `paths.repo_root: .`
 - the only env var it sets is `PYTHONFAULTHANDLER=1`
 - `resources.cpus_per_proc: 8`
+- `resources.nproc_per_node: auto` — uses **all visible GPUs** (omits `-g` so
+  `train.sh` auto-detects); set an integer to pin
 
 ```bash
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
-  --resources.nproc-per-node 4
+pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
-`pimm launch` **errors if the resolved site is non-local** — use `pimm submit`
-for Slurm sites.
+`pimm launch` is the **local executor** (run on the current node); `pimm submit`
+is the **Slurm executor** (batch, or `--interactive` for a live allocation). The
+executor follows the verb, *not* the site name — so `pimm launch --site s3df`
+runs on the current node **inside the s3df container**, and `pimm submit --site
+s3df` queues the same environment on Slurm.
+
+## Add your own site (start from `slurm`)
+
+For a generic Slurm cluster, build from the **`slurm`** base — not `s3df` /
+`nersc`, which are SLAC/NERSC-specific. Drop a `launch/sites/<name>.yaml` that
+inherits it (`--site <name>` resolves to `launch/sites/<name>.yaml`):
+
+```yaml
+# launch/sites/mycluster.yaml
+_base_: slurm.yaml                 # generic Slurm defaults
+
+site: mycluster
+
+paths:
+  repo_root: /home/me/particle-imaging-models   # shared checkout jobs run from
+  exp_root: "{repo_root}/exp"                    # where runs are written
+
+resources:
+  nnodes: 1
+  nproc_per_node: 4                 # GPUs per node
+  cpus_per_proc: 12                 # CPUs per GPU
+  time: "12:00:00"
+
+slurm:
+  account: my_account
+  partition: gpu
+  gpu_directive: gres               # `--gres=gpu:N`; some clusters need `gpus-per-node`
+
+container:
+  runtime: none                     # or `singularity` with an `image:` (see below)
+
+env:
+  PILARNET_DATA_ROOT_V1: /data/pilarnet/v1      # cluster-wide data roots
+```
+
+```bash
+pimm submit --site mycluster --train.config <config> \
+  --resources.nnodes 1 --resources.nproc-per-node 4 --dry-run
+```
+
+The keys a site profile understands:
+
+```{list-table}
+:header-rows: 1
+:widths: 20 80
+
+* - Section
+  - Keys
+* - `paths`
+  - `repo_root` (checkout jobs run from), `exp_root` (run outputs; default `{repo_root}/exp`)
+* - `resources`
+  - `nnodes`, `nproc_per_node` (GPUs/node), `cpus_per_proc` (CPUs/GPU), `time`, `mem`
+* - `slurm`
+  - `account`, `partition`, `qos`, `constraint`, `gpu_directive` (`gres` or `gpus-per-node`), `output`
+* - `container`
+  - `runtime` (`none` / `singularity` / `shifter` / `docker`), `image`, `binds`, `repo_mount`, `setup`, `interpreter` (absolute in-image python)
+* - `submit`
+  - `host` (optional remote login host to submit from), `setup` (commands run before submission)
+* - `env`
+  - environment variables injected into the job (data roots, NCCL knobs, …)
+```
+
+Always `--dry-run` first to confirm the rendered account/partition/GRES before
+anything hits the queue. The `s3df` and `nersc` profiles below are concrete
+examples to crib from.
 
 ## Add your own site (start from `slurm`)
 
@@ -107,13 +177,16 @@ pimm submit --site s3df \
 
 What `s3df.yaml` provides:
 
-- `paths.repo_root` → the shared checkout used from batch jobs.
+- `paths.repo_root` is **env-relative** (inherited from `slurm.yaml`) — it
+  resolves to your checkout, so no per-user path is committed. Override
+  `exp_root` per run (`--paths.exp-root`) or redirect checkpoints with `MODEL_DIR`
+  in `.env` if you need outputs off `$HOME`.
 - Submission runs **locally** by default (no `submit.host`); add
-  `--submit.host iana` to submit from a remote login host (its optional
-  `submit.setup` activates `pointcept-torch2.5.0-cu12.4`).
+  `--submit.host iana` to submit from a remote login host.
 - Jobs run under **Singularity** with `/sdf`, `/fs`, `/sdf/scratch`, and
-  `/lscratch` bound in; the container setup activates
-  `pointcept-torch2.5.0-cu12.4`.
+  `/lscratch` bound in. The environment is **baked into the image** (no conda
+  activation); the launcher enters with a hermetic `bash --noprofile --norc -c`
+  and uses the in-image interpreter `container.interpreter` (`/opt/conda/bin/python`).
 - GPU directive: `--gres=gpu:<N>`.
 - Default account `mli:nu-ml-dev`, default partition `ampere`.
 

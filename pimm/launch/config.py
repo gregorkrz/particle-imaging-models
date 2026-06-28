@@ -307,6 +307,11 @@ def validate_launch_config(cfg: dict[str, Any]) -> None:
     ]
     if scheduler(cfg) == "slurm":
         required.extend(["resources.time", "slurm.gpu_directive"])
+        if str(cfg.get("resources", {}).get("nproc_per_node")).lower() == "auto":
+            raise SystemExit(
+                "resources.nproc_per_node='auto' is only valid for the local "
+                "executor; set an explicit GPU count for Slurm (batch/interactive)."
+            )
     for dotted_path in required:
         require_path(cfg, dotted_path)
 

@@ -63,8 +63,21 @@ def shell_join(parts: list[Any]) -> str:
 
 
 def scheduler(cfg: dict[str, Any]) -> str:
-    """Return local or slurm from the resolved site."""
+    """Return "local" or "slurm" from the executor.
+
+    Driven by `cfg["executor"]` (local => local; batch/interactive => slurm), set
+    by the verb, NOT by the site name. Falls back to the legacy site-name rule for
+    configs that predate the executor field.
+    """
+    executor = cfg.get("executor")
+    if executor:
+        return "local" if str(executor) == "local" else "slurm"
     return "local" if str(cfg.get("site", "local")) == "local" else "slurm"
+
+
+def nproc_is_auto(cfg: dict[str, Any]) -> bool:
+    """Return whether GPUs/node should be auto-detected (local only)."""
+    return str(cfg.get("resources", {}).get("nproc_per_node")).lower() == "auto"
 
 
 def chain_jobs(cfg: dict[str, Any]) -> int:
@@ -76,11 +89,20 @@ def chain_jobs(cfg: dict[str, Any]) -> int:
 
 
 def resources(cfg: dict[str, Any]) -> dict[str, Any]:
-    """Return normalized torchrun-style resource values."""
+    """Return normalized torchrun-style resource values.
+
+    `nproc_per_node` may be the string "auto" (local only) meaning "let train.sh
+    detect all visible GPUs"; it is preserved as "auto" rather than coerced.
+    """
     raw = cfg.get("resources", {})
+    nproc = raw.get("nproc_per_node")
+    if str(nproc).lower() == "auto":
+        nproc_value: Any = "auto"
+    else:
+        nproc_value = int(nproc or 1)
     return {
         "nnodes": int(raw.get("nnodes") or 1),
-        "nproc_per_node": int(raw.get("nproc_per_node") or 1),
+        "nproc_per_node": nproc_value,
         "cpus_per_proc": int(raw.get("cpus_per_proc") or 1),
         "time": raw.get("time"),
         "mem": raw.get("mem"),
@@ -88,9 +110,16 @@ def resources(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def distributed_world_size(cfg: dict[str, Any]) -> int:
-    """Return the number of ranks implied by the launcher resources."""
+    """Return the number of ranks implied by the launcher resources.
+
+    With `nproc_per_node: auto` (local) the count is unknown at render time, so
+    GPUs/node is treated as 1 for launcher-side math (DCP defaults, batch-size
+    divisibility); the engine validates the real device count at runtime.
+    """
     res = resources(cfg)
-    return res["nnodes"] * res["nproc_per_node"]
+    nproc = res["nproc_per_node"]
+    nproc = 1 if nproc == "auto" else int(nproc)
+    return res["nnodes"] * nproc
 
 
 def slurm_time_to_minutes(value: Any) -> int:

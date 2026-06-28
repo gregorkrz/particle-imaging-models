@@ -43,34 +43,53 @@ We are looking at including the following models/modalities in the future:
 
 ## Quick Start
 
-### Using the container (recommended)
-
-```bash
-git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
-cd particle-imaging-models
-apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
-```
-
-The image installs `pimm` as an editable package at `/opt/pimm/src`. Bind your
-own local clone over that path so the `pimm` console script imports your local clone,
-not the global install baked into the image.
-
-### From source
+All three paths below share one source of truth for dependencies:
+`.github/docker/common/versions.sh` (pins) + `.github/docker/requirements/*` + the
+`.github/docker/common/install_*.sh` scripts. The image and the conda env therefore
+resolve to the same torch/CUDA/extension build.
 
 ```bash
 git clone https://github.com/youngsm/particle-imaging-models.git
 cd particle-imaging-models
-export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.0 8.6 8.9 9.0}"
-conda env create -f environment.yml
-conda activate pimm-torch2.5.0-cu12.4
-pip install -e .
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py \
-  -- epoch=1 data.train.max_len=32 data.val.max_len=16 batch_size=4 num_worker=0 use_wandb=False
 ```
 
-Requires CUDA 11.6+ for FlashAttention (set `enable_flash=False` in configs if unavailable).
-The `TORCH_CUDA_ARCH_LIST` export lets the LitePT/PointROPE CUDA extension build
-on login or container build hosts without a visible GPU.
+#### Option A — pull the prebuilt image (recommended)
+
+```bash
+apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
+```
+
+The image installs `pimm` editable at `/opt/pimm/src`; bind your clone over that
+path so the `pimm` command imports your code, not the baked-in copy.
+
+#### Option B — build the image
+
+```bash
+docker build -f .github/docker/Dockerfile -t pimm:local .   # or Dockerfile.nersc on Perlmutter
+```
+
+#### Option C — local conda env (no container)
+
+`install.sh` creates a conda env using the same scripts the image build uses:
+
+```bash
+./install.sh                 # GPU env, builds flash-attn (matches the image)
+./install.sh --no-flash      # skip flash-attn (slow build; set enable_flash=False in configs)
+./install.sh --cpu           # CPU-only: skip CUDA wheels/extensions
+conda activate pimm-torch2.5.0-cu12.4
+```
+
+It provisions the CUDA toolchain (nvcc + compilers) via conda, then installs
+torch, the python deps, the PyG/spconv wheels, the local CUDA extensions, and
+`pimm -e .`. Override pins (e.g. `TORCH_CUDA_ARCH_LIST` for your GPUs) by
+exporting them before running, or edit `.github/docker/common/versions.sh`.
+
+#### Smoke test
+
+```bash
+pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
+  -- epoch=1 data.train.max_len=32 data.val.max_len=16 batch_size=4 num_worker=0 use_wandb=False
+```
 
 ## Training & Testing
 

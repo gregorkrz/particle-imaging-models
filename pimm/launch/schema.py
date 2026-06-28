@@ -18,7 +18,9 @@ class Paths:
 @dataclass(kw_only=True)
 class Resources:
     nnodes: int = 1
-    nproc_per_node: int = 4
+    # GPUs per node. Int, or "auto" (local executor only) to let train.sh detect
+    # all visible GPUs (omits `-g`). "auto" is invalid for Slurm executors.
+    nproc_per_node: int | str = 4
     cpus_per_proc: int = 12
     time: str | int | None = "24:00:00"
     mem: str | None = None
@@ -69,6 +71,10 @@ class Container:
     repo_mount: str | None = "/opt/pimm/src"
     unset_env: list[str] = field(default_factory=list)
     setup: list[str] = field(default_factory=list)
+    # Absolute interpreter path inside the image (e.g. /opt/conda/bin/python).
+    # When set, used as `train.sh -p` so the image's python wins regardless of a
+    # host conda leak. None -> fall back to the runtime default / sys.executable.
+    interpreter: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -96,6 +102,11 @@ class Rendezvous:
 @dataclass(kw_only=True)
 class LaunchConfig:
     site: str = "local"
+    # How the run is launched: "local" (current node), "batch" (Slurm queue via
+    # submitit), or "interactive" (live Slurm salloc+srun). batch and interactive
+    # are both Slurm. The verb sets this (launch->local, submit->batch); it is not
+    # inferred from the site name.
+    executor: str = "local"
     # `pimm submit --interactive`: grab a blocking `salloc` allocation and run
     # training live in the terminal, instead of queuing a batch job. Settable per
     # site/recipe in YAML or per-invocation on the CLI. Ignored by `pimm launch`.
@@ -120,6 +131,7 @@ class LaunchConfig:
             train_data["code_copy"] = not bool(train_data.pop("no_code_copy"))
         return cls(
             site=data.get("site", "local"),
+            executor=data.get("executor", "local"),
             interactive=bool(data.get("interactive", False)),
             paths=Paths(**dict(data.get("paths") or {})),
             resources=Resources(**dict(data.get("resources") or {})),
@@ -158,6 +170,7 @@ class LaunchCommand(LaunchConfig):
         """Build command defaults from a typed launch config."""
         return cls(
             site=config.site,
+            executor=config.executor,
             interactive=config.interactive,
             paths=config.paths,
             resources=config.resources,
@@ -195,6 +208,7 @@ class SubmitCommand(LaunchCommand):
         """Build submit command defaults from a typed launch config."""
         return cls(
             site=config.site,
+            executor=config.executor,
             interactive=config.interactive,
             paths=config.paths,
             resources=config.resources,

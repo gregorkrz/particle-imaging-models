@@ -1,0 +1,5 @@
+# Dev / tooling extras (not needed to train or run pimm).
+#   pip install -r docker/requirements/requirements-dev.txt
+pytest
+black        # config formatter (yapf is the runtime one)
+jupyterlab   # interactive notebooks

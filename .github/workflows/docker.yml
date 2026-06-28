@@ -10,7 +10,7 @@ on:
     tags:
       - 'v*'
     paths:
-      - 'docker/**'
+      - '.github/docker/**'
       - 'libs/**'
       - '.github/workflows/docker.yml'
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
       id-token: write
     with:
       output: image
-      file: docker/Dockerfile
+      file: .github/docker/Dockerfile
       push: ${{ github.event_name != 'pull_request' }}
       cache: true
       cache-mode: max
@@ -59,7 +59,7 @@ jobs:
       id-token: write
     with:
       output: image
-      file: docker/Dockerfile.nersc
+      file: .github/docker/Dockerfile.nersc
       push: ${{ github.event_name != 'pull_request' }}
       cache: true
       cache-mode: max

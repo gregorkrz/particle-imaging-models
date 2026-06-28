@@ -19,7 +19,7 @@ def parse_command(argv: list[str], launch_timestamp: str) -> tuple[SubmitCommand
         argv,
         launch_timestamp=launch_timestamp,
         prog="pimm submit",
-        require_site=True,
+        require_site=False,
         default_site="s3df",
     )
 
@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
         require_config=True,
         training_overrides=training_overrides,
     )
+    # `pimm submit` is a Slurm executor: batch (queued) or interactive (live alloc).
+    cfg["executor"] = "interactive" if cfg.get("interactive") else "batch"
     return run_submit(
         cfg,
         launch_timestamp=launch_timestamp,

@@ -1,94 +1,112 @@
 # Installation
 
-pimm has two layers with different dependency needs:
+Pick one of three ways to get the environment. **All three share one source of
+truth** for dependencies under `.github/docker/`:
 
-- The **CLI / launcher**
-- The **full training stack** (PyTorch, CUDA, spconv, FlashAttention, the local CUDA
-  extensions) is heavy and is what actually runs on the GPU nodes. 
+- `common/versions.sh` — the pins (torch, CUDA, flash-attn, arch list)
+- `requirements/{requirements,requirements-cuda,requirements-dev}.txt`
+- `common/install_*.sh` — the install steps
 
-## Option A — Container (recommended)
+The Docker image build and the local conda installer (`install.sh`) run the
+**same** scripts, so the container and the conda env resolve to the same
+torch / CUDA / extension stack.
 
-Pre-built images live on Docker Hub:
+Pre-built images are on Docker Hub:
 
 | Image | Description |
 |-------|-------------|
-| `youngsm/pimm:main` | Standard image |
-| `youngsm/pimm-nersc:main` | NERSC/Shifter variant with MPI-aware HDF5 + `mpi4py` |
+| `youngsm/pimm:pytorch2.5.0-cuda12.4` | Standard image (`:main` tracks latest `main`) |
+| `youngsm/pimm-nersc:pytorch2.5.0-cuda12.4` | NERSC/Shifter variant: MPI-aware HDF5 + `mpi4py` |
 
 ```bash
 git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
 cd particle-imaging-models
-apptainer pull /path/to/pimm.sif docker://youngsm/pimm:main
 ```
 
-The image installs `pimm` as an editable package at `/opt/pimm/src`. **Bind your
-own clone over that path** so the `pimm` command and imports resolve to your
-local code, not the build baked into the image:
+## Option A — Singularity / Apptainer (recommended on HPCs)
+
+First, pull the container from Dockerhub and rebuilt as a singularity image (`pimm.sif`):
 
 ```bash
-apptainer exec --nv \
-  --bind "$PWD:/opt/pimm/src" \
-  --pwd /opt/pimm/src \
-  /path/to/pimm.sif \
+apptainer pull pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
+```
+
+Run pimm from your clone directory — the container uses your checkout as the pimm
+source. Run a command directly:
+
+```bash
+apptainer run --nv pimm.sif \
   pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
-The managed launch path (`pimm submit`) wires this mount automatically — it
-binds `paths.repo_root` onto `container.repo_mount` (default `/opt/pimm/src`).
-See {doc}`../hpc/sites`.
-
-:::{dropdown} Building the image yourself
-The generic image is built from `docker/Dockerfile`; the NERSC variant from
-`docker/Dockerfile.nersc` (it builds MPICH + parallel HDF5 from source so
-Shifter can swap in Cray MPICH at runtime).
+…or open a shell and work inside:
 
 ```bash
-docker build \
-  --build-arg TORCH_VERSION=2.5.0 \
-  --build-arg CUDA_VERSION=12.4 \
-  --build-arg CUDA_VERSION_NO_DOT=124 \
-  --build-arg 'TORCH_CUDA_ARCH_LIST=8.0 8.6 8.9 9.0' \
-  -f docker/Dockerfile -t pimm:dev .
+apptainer run --nv pimm.sif
+# now inside the container:
+pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
-The container entrypoint sets `PYTHONNOUSERSITE=1` and shadows host conda/mamba
-shell hooks, which keeps imports correct when home directories are bind-mounted
-by Apptainer/Singularity.
-:::
+For batch jobs you don't enter the container yourself — `pimm submit` wraps
+`train.sh` in the container for you. See {doc}`../hpc/sites`.
 
-## Option B — From source (conda)
+## Option B — Docker (local dev, or building images)
 
-`environment.yml` is the authoritative recipe for the local GPU stack: Python
-3.10, PyTorch 2.5.0 / CUDA 12.4, GCC/GXX 13.2 for extension builds, and sparse
-point-cloud dependencies (PyG, spconv, ocnn, FlashAttention, CLIP) plus the
-local CUDA extensions under `libs/`.
+Build the image, then run pimm from your clone directory — the container uses
+your checkout as the pimm source. Run a command directly:
 
 ```bash
-git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
-cd particle-imaging-models
+# build (standard; NERSC variant: -f .github/docker/Dockerfile.nersc)
+docker build -f .github/docker/Dockerfile -t pimm:local .
 
-export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.0 8.6 8.9 9.0}"
-conda env create -f environment.yml
-conda activate pimm-torch2.5.0-cu12.4
-pip install -e .
+docker run --rm --gpus all -v "$PWD:$PWD" -w "$PWD" pimm:local \
+  pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
-Create the environment **from the repository root** so the relative paths in the
-pip section resolve — it installs the local extensions `libs/pointrope`,
-`libs/pointops`, `libs/pointgroup_ops`, `libs/cnms`, and `libs/pytorch3d_ops`.
+…or open a shell and work inside:
+
+```bash
+docker run --rm -it --gpus all -v "$PWD:$PWD" -w "$PWD" pimm:local bash
+# now inside the container:
+pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
+```
+
+Build args default to those found in `.github/docker/common/versions.sh`: `TORCH_VERSION`,
+`CUDA_VERSION`, `CUDA_VERSION_NO_DOT`, `CUDNN_VERSION`, `TORCH_CUDA_ARCH_LIST`.
+The entrypoint sets `PYTHONNOUSERSITE=1` and neutralizes host conda/mamba shell
+hooks, so bind-mounted home directories don't shadow the image's packages.
+
+## Option C — Local conda env (no container)
+
+`install.sh` creates a conda env using the same `.github/docker` scripts the
+image build uses. conda provides only the toolchain (nvcc + matching compilers +
+sparsehash); pip installs torch and everything else.
+
+```bash
+./install.sh                 # GPU env, builds flash-attn (matches the image)
+#   ./install.sh --no-flash  # skip the slow flash-attn source build
+#   ./install.sh --cpu       # CPU-only: skip CUDA wheels/extensions
+#   ./install.sh --name foo  # custom env name (default: pimm-torch2.5.0-cu124)
+conda activate pimm-torch2.5.0-cu124
+```
+
+It installs torch + torchvision (pinned), the python deps, the PyG/spconv CUDA
+wheels, the local CUDA extensions under `libs/`, and `pimm` editable.
 
 :::{note}
-The `TORCH_CUDA_ARCH_LIST` export lets the LitePT / PointROPE CUDA extension
-build on a login or container-build host that has **no visible GPU**.
-FlashAttention needs CUDA 11.6+. If it is unavailable, set `enable_flash=False`
-in your config's backbone block.
+**A GPU is not required to install** — the CUDA extensions cross-compile for
+`TORCH_CUDA_ARCH_LIST` (defaulted in `versions.sh`) via `nvcc`; no device is
+touched at build time. Set it for your hardware if it's not in the default list,
+e.g. `TORCH_CUDA_ARCH_LIST="8.6" ./install.sh`. A GPU is only needed to *train*.
+FlashAttention is optional — `--no-flash` skips it, and configs run with
+`enable_flash=False`.
 :::
 
 ### Editable install everywhere you launch
 
 Because `pimm` is a console-script entry point, every host where you run
 `pimm launch` / `pimm submit` needs the checkout installed in the active
-environment:
+environment (the options above all do this):
 
 ```bash
 pip install -e .
@@ -118,6 +136,16 @@ pimm launch \
 ```
 
 If this runs an epoch and writes an `exp/.../` directory, your install is good.
+`pimm launch` runs on the current node and auto-detects all visible GPUs by
+default.
+
+:::{note}
+**Prerequisites.** No data yet? Fetch a revision first with `python
+scripts/download_pilarnet.py --version v1` (see {doc}`../datasets/pilarnet`). No
+GPU on this machine? The run starts but `torchrun` exits with `RuntimeError: no
+CUDA devices available` — run it on a GPU node (see {doc}`../hpc/index`). There is
+currently no data-free or CPU-only smoke test.
+:::
 
 :::{note}
 **Prerequisites.** No data yet? Fetch a revision first with `python
@@ -141,6 +169,7 @@ cp example.env .env
 | `PILARNET_DATA_ROOT_V1`, `_V2` | PILArNet-M data roots per revision |
 | `MODEL_DIR` | Redirect (large) checkpoints to another filesystem; the experiment `model/` becomes a symlink |
 | `WANDB_API_KEY` | Alternative to `wandb login` |
+| `TORCH_CUDA_ARCH_LIST` | Target GPU archs for building the CUDA extensions |
 
 `PILArNetH5Dataset` also falls back to `~/.cache/pimm/pilarnet/<revision>` when
 no data-root variable is set. See {doc}`../datasets/pilarnet` for downloading.
@@ -159,8 +188,8 @@ live source.
 Verify these match each other: the PyTorch + CUDA versions, `spconv-cu124` (or
 the wheel matching your CUDA stack), the built output under `libs/pointops`,
 `libs/pointgroup_ops`, `libs/cnms`, `libs/pytorch3d_ops`, and your
-`TORCH_CUDA_ARCH_LIST` / site `CUMM_CUDA_ARCH_LIST` for the target GPUs. Make
-sure `ninja` is installed and CUDA 12.4 tooling is active.
+`TORCH_CUDA_ARCH_LIST` for the target GPUs. Make sure `ninja` is installed and
+CUDA 12.4 tooling is active.
 :::
 
 :::{dropdown} A model import fails on optional CUDA dependencies
