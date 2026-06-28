@@ -33,11 +33,67 @@ View on GitHub
 
 ---
 
-**pimm** adapts modern deep-learning and computer-vision methods to event
-reconstruction in neutrino detectors. It gives you self-supervised
-pre-training, semantic and panoptic segmentation, exact-resume distributed
-training, and a launch layer that runs the *same* code locally, on a multi-GPU
-node, or across many HPC nodes.
+**pimm** adapts modern deep-learning and computer-vision methods to train models that learn to understand sparse data from detectors in high energy physics. It provides several model backbones, self-supervised
+foundation model pre-training recipes, and models for fine-tuning for downstream tasks. Models can be trained on a local system on 1 or more GPUs, or on many GPUs across several nodes.
+
+## Quick start
+
+First, clone the repository.
+
+```bash
+git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
+cd particle-imaging-models
+```
+
+::::{tab-set}
+
+:::{tab-item} Singularity / Apptainer (Recommended)
+Pull the image, then run pimm from your clone directory — the container uses your
+checkout as the pimm source. Run a command directly, or open a shell first:
+```bash
+apptainer pull /path/to/pimm.sif docker://youngsm/pimm:main
+
+# run a command directly:
+apptainer run --nv /path/to/pimm.sif pimm launch --train.config <config>
+
+# ...or open a shell, then run pimm inside:
+apptainer run --nv /path/to/pimm.sif
+pimm launch --train.config <config>
+```
+:::
+
+:::{tab-item} Docker
+Make sure Docker's running, then run pimm from your clone directory — it uses your
+checkout as the pimm source. Run a command directly, or open a shell first:
+```bash
+# run a command directly:
+docker run --rm --gpus all -v "$PWD:$PWD" -w "$PWD" youngsm/pimm:main \
+  pimm launch --train.config <config>
+
+# ...or open a shell, then run pimm inside:
+docker run --rm -it --gpus all -v "$PWD:$PWD" -w "$PWD" youngsm/pimm:main bash
+pimm launch --train.config <config>
+```
+:::
+
+:::{tab-item} Local (conda)
+Use `install.sh` to build a full a conda (or mamba) env from the same `.github/docker` scripts.
+```bash
+# download and install Conda or Mamba if you haven't already
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+
+# initialize conda, then run:
+./install.sh                 # use --no-flash to skip flash-attn
+conda activate pimm-torch2.5.0-cu124
+pimm launch --train.config <config>
+```
+:::
+
+::::
+
+Full details, image tags, and verification:
+{doc}`getting_started/installation`.
 
 ## Minimal quick start
 

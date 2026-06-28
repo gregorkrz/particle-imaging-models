@@ -200,7 +200,7 @@ def build_attempts(cfg: dict[str, Any], run_name: str) -> list[Attempt]:
             options["wandb_job_index"] = job_index
             options["chain_jobs"] = total_jobs
         train_cmd = build_train_sh_command(job_cfg, run_name)
-        script = render_script(job_cfg, train_cmd)
+        script = render_script(job_cfg, train_cmd, run_name)
         attempts.append(
             Attempt(
                 job_index=job_index,
@@ -380,7 +380,7 @@ def build_interactive_argv(cfg: dict[str, Any], run_name: str) -> list[str]:
 
     # srun launches the rendered script one task per node (mirrors batch); the
     # script's rdzv derives MASTER_ADDR from $SLURM_JOB_NODELIST.
-    script = render_script(cfg, build_train_sh_command(cfg, run_name))
+    script = render_script(cfg, build_train_sh_command(cfg, run_name), run_name)
     return [*alloc, "srun", "--ntasks-per-node", "1", "bash", "-lc", script]
 
 

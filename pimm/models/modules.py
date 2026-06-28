@@ -3,24 +3,9 @@ import torch.nn as nn
 import spconv.pytorch as spconv
 import torch
 
-try:
-    import ocnn
-except ImportError:
-    ocnn = None
-
 from collections import OrderedDict
 from pimm.models.utils.structure import Point
 from pimm.engines.hooks import HookBase
-
-
-def is_ocnn_module(module):
-    ocnn_modules = (
-        ocnn.nn.OctreeConv,
-        ocnn.nn.OctreeDeconv,
-        ocnn.nn.OctreeGroupConv,
-        ocnn.nn.OctreeDWConv,
-    )
-    return isinstance(module, ocnn_modules)
 
 
 class PointModule(nn.Module):
@@ -83,14 +68,6 @@ class PointSequential(PointModule):
                 if isinstance(input, Point):
                     input.sparse_conv_feat = module(input.sparse_conv_feat)
                     input.feat = input.sparse_conv_feat.features
-                else:
-                    input = module(input)
-            elif is_ocnn_module(module):
-                if isinstance(input, Point):
-                    input.octree.features[-1] = module(
-                        input.feat[input.octree_order], input.octree, input.octree.depth
-                    )
-                    input.feat = input.octree.features[-1][input.octree_inverse]
                 else:
                     input = module(input)
             # PyTorch module

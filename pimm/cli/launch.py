@@ -34,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
         require_config=True,
         training_overrides=training_overrides,
     )
+    # `pimm launch` is the local executor by definition (run on the current node),
+    # regardless of which site's environment/container is selected.
+    cfg["executor"] = "local"
     return launch(
         cfg,
         launch_timestamp=launch_timestamp,

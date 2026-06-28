@@ -1,0 +1,69 @@
+# syntax=docker/dockerfile:1
+#
+# NERSC variant: adds MPICH (ABI-compatible with Cray MPICH for Shifter), parallel
+# HDF5, mpi4py, and MPI-enabled h5py built from source. Shares the rest of the
+# install with the standard image via .github/docker/common/*. Keep the FROM tag in sync
+# with .github/docker/common/versions.sh.
+
+ARG TORCH_VERSION=2.5.0
+ARG CUDA_VERSION=12.4
+ARG CUDNN_VERSION=9
+FROM pytorch/pytorch:${TORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-devel
+
+ENV PYTHONNOUSERSITE=1
+RUN rm -f /etc/apt/sources.list.d/*.list
+
+COPY .github/docker/common /opt/pimm/.github/docker/common
+COPY .github/docker/requirements /opt/pimm/.github/docker/requirements
+
+# System toolchain (+ gfortran/pkg-config for the MPI/HDF5 builds).
+RUN bash /opt/pimm/.github/docker/common/install_system.sh gfortran pkg-config
+
+# Build MPICH from source (ABI-compatible with Cray MPICH for NERSC Shifter).
+ARG MPICH_VERSION=4.0.2
+RUN wget https://www.mpich.org/static/downloads/${MPICH_VERSION}/mpich-${MPICH_VERSION}.tar.gz \
+  && tar xzf mpich-${MPICH_VERSION}.tar.gz \
+  && cd mpich-${MPICH_VERSION} \
+  && FFLAGS=-fallow-argument-mismatch FCFLAGS=-fallow-argument-mismatch ./configure \
+  && make -j 16 && make install \
+  && cd .. && rm -rf mpich-${MPICH_VERSION} mpich-${MPICH_VERSION}.tar.gz
+RUN /sbin/ldconfig
+
+# Build parallel HDF5 from source.
+ARG HDF5_TAG=hdf5_1.14.6
+RUN wget https://github.com/HDFGroup/hdf5/archive/refs/tags/${HDF5_TAG}.tar.gz \
+  && tar xzf ${HDF5_TAG}.tar.gz \
+  && cd hdf5-${HDF5_TAG} \
+  && CC=mpicc CXX=mpicxx ./configure --enable-parallel --enable-build-mode=production \
+      --prefix=/opt/hdf5 --enable-static --enable-shared --with-pic \
+  && make -j 8 && make install \
+  && cd .. && rm -rf hdf5-${HDF5_TAG} ${HDF5_TAG}.tar.gz
+RUN /sbin/ldconfig
+ENV HDF5_DIR=/opt/hdf5
+ENV PATH=/opt/hdf5/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/hdf5/lib:$LD_LIBRARY_PATH
+
+# mpi4py + MPI-enabled h5py against the source MPICH/HDF5 (installed BEFORE the
+# shared requirements so the unpinned `h5py` there is already satisfied).
+RUN pip install --no-cache-dir --upgrade pip \
+  && pip install --no-cache-dir cython numpy \
+  && MPICC=mpicc pip install --no-cache-dir --no-binary=mpi4py mpi4py \
+  && HDF5_MPI=ON HDF5_VERSION=1.14.6 CC=mpicc pip install --no-cache-dir --no-binary=h5py h5py
+
+# Shared install steps (base image already provides torch).
+RUN bash /opt/pimm/.github/docker/common/install_python_deps.sh
+RUN bash /opt/pimm/.github/docker/common/install_pyg.sh
+RUN bash /opt/pimm/.github/docker/common/install_flash_attn.sh
+
+COPY libs/ /opt/pimm/libs/
+RUN PIMM_LIBS=/opt/pimm/libs bash /opt/pimm/.github/docker/common/install_cuda_exts.sh \
+ && rm -rf /opt/pimm/libs
+
+COPY . /opt/pimm/src
+WORKDIR /opt/pimm/src
+RUN pip install --no-cache-dir -e .
+
+COPY .github/docker/entrypoint.sh /opt/pimm/entrypoint.sh
+RUN chmod +x /opt/pimm/entrypoint.sh
+ENTRYPOINT ["/opt/pimm/entrypoint.sh"]
+CMD ["bash"]

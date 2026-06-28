@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shlex
 import subprocess
@@ -14,6 +15,16 @@ from .utils import ROOT, as_bool, option_value, resources, scheduler, shell_join
 
 
 REDACTED = "<redacted>"
+
+
+def local_master_port(run_name: str | None) -> int:
+    """Derive a stable, ~unique local rendezvous port from the run name.
+
+    Mirrors Pointcept's hashed MASTER_PORT so concurrent / back-to-back local runs
+    on a shared node do not collide on a fixed port. Range 20000-39999.
+    """
+    digest = hashlib.md5((run_name or "pimm").encode()).hexdigest()
+    return 20000 + int(digest[:8], 16) % 20000
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|token|secret|password|passwd|credential)", re.I)
 
 
@@ -58,7 +69,7 @@ def container_repo_root(cfg: dict[str, Any]) -> str:
     container = cfg.get("container", {})
     runtime = container.get("runtime")
     repo_mount = container.get("repo_mount")
-    if runtime in {"singularity", "shifter"} and repo_mount:
+    if runtime in {"singularity", "shifter", "docker"} and repo_mount:
         return str(repo_mount)
     return host_repo_root(cfg)
 
@@ -68,7 +79,7 @@ def repo_bind(cfg: dict[str, Any]) -> str | None:
     container = cfg.get("container", {})
     runtime = container.get("runtime")
     repo_mount = container.get("repo_mount")
-    if runtime not in {"singularity", "shifter"} or not repo_mount:
+    if runtime not in {"singularity", "shifter", "docker"} or not repo_mount:
         return None
     host_root_path = Path(host_repo_root(cfg)).expanduser()
     host_root = str(
@@ -95,6 +106,27 @@ def shifter_volume_spec(bind: str) -> str:
     return f"{bind}:{bind}"
 
 
+def interpreter_args(cfg: dict[str, Any]) -> list[str]:
+    """Return `["-p", <python>]` for train.sh, or [] to use train.sh's default.
+
+    Priority: explicit `train.python`; else, when a container is configured, its
+    absolute `container.interpreter` (None -> rely on the image's `python` on
+    PATH); else, for a local run with no container, the launcher's own
+    `sys.executable` (the active conda env). For a Slurm run with no container,
+    return [] so train.sh uses its own `python` default.
+    """
+    train_cfg = cfg.get("train", {})
+    python = train_cfg.get("python")
+    if python is None:
+        container = cfg.get("container", {})
+        runtime = container.get("runtime")
+        if runtime in {"singularity", "shifter", "docker"}:
+            python = container.get("interpreter")
+        elif scheduler(cfg) == "local":
+            python = sys.executable
+    return ["-p", python] if python else []
+
+
 def build_train_sh_command(cfg: dict[str, Any], run_name: str) -> str:
     """Build the `scripts/train.sh` invocation for this resolved launch config."""
     train_cfg = cfg.get("train", {})
@@ -104,24 +136,14 @@ def build_train_sh_command(cfg: dict[str, Any], run_name: str) -> str:
 
     repo_root = container_repo_root(cfg)
     res = resources(cfg)
-    parts: list[Any] = [
-        "sh",
-        f"{repo_root}/scripts/train.sh",
-        "-m",
-        res["nnodes"],
-        "-g",
-        res["nproc_per_node"],
-        "-c",
-        config,
-        "-n",
-        run_name,
-    ]
+    parts: list[Any] = ["sh", f"{repo_root}/scripts/train.sh", "-m", res["nnodes"]]
+    # `nproc_per_node: auto` -> omit -g so train.sh auto-detects all visible GPUs
+    # (Pointcept behavior). Otherwise pass the explicit GPU count.
+    if res["nproc_per_node"] != "auto":
+        parts += ["-g", res["nproc_per_node"]]
+    parts += ["-c", config, "-n", run_name]
 
-    python = train_cfg.get("python")
-    if python is None and scheduler(cfg) == "local":
-        python = sys.executable
-    if python:
-        parts += ["-p", python]
+    parts += interpreter_args(cfg)
 
     wandb_name = cfg.get("run", {}).get("wandb_name") or run_name
     if wandb_name:
@@ -154,12 +176,18 @@ def build_container_command(cfg: dict[str, Any], train_cmd: str) -> str:
     )
     inner_cmd = "\n".join([*setup, train_cmd])
 
+    # Enter the container with a hermetic shell: do NOT source the host
+    # ~/.bash_profile/~/.bashrc, whose conda init (often an absolute-path call)
+    # would shadow the image's interpreter. The image's own ENV provides PATH; any
+    # module/env setup belongs in `container.setup`, not the user's dotfiles.
+    shell = ["--noprofile", "--norc", "-c"]
+
     if runtime == "singularity":
         parts: list[Any] = ["singularity", "run", "--nv"]
         binds = bind_specs(cfg)
         if binds:
             parts += ["-B", ",".join(str(bind) for bind in binds)]
-        parts += [container["image"], "bash", "-lc", inner_cmd]
+        parts += [container["image"], "bash", *shell, inner_cmd]
         return shell_join(parts)
 
     if runtime == "shifter":
@@ -174,7 +202,17 @@ def build_container_command(cfg: dict[str, Any], train_cmd: str) -> str:
         volumes = [shifter_volume_spec(bind) for bind in bind_specs(cfg)]
         if volumes:
             parts.append(f"--volume={';'.join(volumes)}")
-        parts += ["/bin/bash", "-lc", inner_cmd]
+        parts += ["/bin/bash", *shell, inner_cmd]
+        return shell_join(parts)
+
+    if runtime == "docker":
+        parts = ["docker", "run", "--rm", "--gpus", "all", "--ipc=host"]
+        for bind in bind_specs(cfg):
+            spec = str(bind)
+            if ":" not in spec:
+                spec = f"{spec}:{spec}"
+            parts += ["-v", spec]
+        parts += [container["image"], "bash", *shell, inner_cmd]
         return shell_join(parts)
 
     if runtime in {None, "none"}:
@@ -183,7 +221,7 @@ def build_container_command(cfg: dict[str, Any], train_cmd: str) -> str:
     raise SystemExit(f"Unsupported container.runtime: {runtime}")
 
 
-def rendezvous_setup_lines(cfg: dict[str, Any]) -> list[str]:
+def rendezvous_setup_lines(cfg: dict[str, Any], run_name: str | None = None) -> list[str]:
     """Return outer-shell rendezvous setup before entering any container."""
     if scheduler(cfg) == "slurm":
         return [
@@ -193,12 +231,12 @@ def rendezvous_setup_lines(cfg: dict[str, Any]) -> list[str]:
         ]
     return [
         "MASTER_ADDR=${MASTER_ADDR:-127.0.0.1}",
-        "MASTER_PORT=${MASTER_PORT:-29500}",
+        f"MASTER_PORT=${{MASTER_PORT:-{local_master_port(run_name)}}}",
         "export MASTER_ADDR MASTER_PORT",
     ]
 
 
-def render_script(cfg: dict[str, Any], train_cmd: str) -> str:
+def render_script(cfg: dict[str, Any], train_cmd: str, run_name: str | None = None) -> str:
     """Render the small shell wrapper around `scripts/train.sh`."""
     repo_root = host_repo_root(cfg)
     env = cfg.get("env") or {}
@@ -221,7 +259,7 @@ def render_script(cfg: dict[str, Any], train_cmd: str) -> str:
     lines.extend(
         [
             *exports,
-            *rendezvous_setup_lines(cfg),
+            *rendezvous_setup_lines(cfg, run_name),
             f"cd {shlex.quote(str(repo_root))}",
             "",
             build_container_command(cfg, train_cmd),
@@ -237,7 +275,7 @@ def render_launch_script(cfg: dict[str, Any], launch_timestamp: str) -> tuple[st
     if not run_name:
         raise SystemExit("Could not determine run name")
     train_cmd = build_train_sh_command(cfg, run_name)
-    return run_name, render_script(cfg, train_cmd)
+    return run_name, render_script(cfg, train_cmd, run_name)
 
 
 def run_script(script: str, cfg: dict[str, Any]) -> int:

@@ -1,0 +1,6 @@
+# CUDA wheels pinned to the torch+CUDA build. Installed by common/install_pyg.sh,
+# which supplies the PyG find-links index for the pinned torch+CUDA. spconv is
+# installed by that script too (its wheel name carries the CUDA suffix).
+torch-scatter
+torch-sparse
+torch-cluster
