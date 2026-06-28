@@ -49,7 +49,7 @@ All three paths below share one source of truth for dependencies:
 resolve to the same torch/CUDA/extension build.
 
 ```bash
-git clone https://github.com/youngsm/particle-imaging-models.git
+git clone https://github.com/deeplearnphysics/particle-imaging-models.git
 cd particle-imaging-models
 ```
 
