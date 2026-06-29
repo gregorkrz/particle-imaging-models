@@ -102,6 +102,17 @@ FlashAttention is optional — `--no-flash` skips it, and configs run with
 `enable_flash=False`.
 :::
 
+:::{note}
+**CUDA point-serialization backend.** One of the `libs/` extensions,
+`serialize_cuda` (vendored from
+[`point_serialization_cuda`](https://github.com/ChristianSchott/point_serialization_cuda)),
+provides CUDA kernels for z-order / Hilbert serialization. When built, it is a
+transparent drop-in: `pimm.models.utils.serialization` routes CUDA tensors
+through it (~20% faster PTv3 inference, bit-for-bit identical to the PyTorch
+encoders) and falls back to PyTorch otherwise. Set
+`PIMM_DISABLE_SERIALIZE_CUDA=1` to force the PyTorch path.
+:::
+
 ### Editable install everywhere you launch
 
 Because `pimm` is a console-script entry point, every host where you run

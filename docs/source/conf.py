@@ -72,6 +72,7 @@ autodoc_mock_imports = [
     "cnms",
     "pytorch3d_ops",
     "pointrope",
+    "serialize_cuda",
     "torch_scatter",
     "torch_geometric",
     "torch_cluster",

@@ -13,3 +13,4 @@ pip install --no-cache-dir "$LIBS/pointops" -v --no-build-isolation
 pip install --no-cache-dir "$LIBS/pointgroup_ops" -v --no-build-isolation
 pip install --no-cache-dir "$LIBS/cnms" -v --no-build-isolation
 FORCE_CUDA=1 pip install --no-cache-dir "$LIBS/pytorch3d_ops" -v --no-build-isolation
+pip install --no-cache-dir "$LIBS/serialize_cuda" -v --no-build-isolation
