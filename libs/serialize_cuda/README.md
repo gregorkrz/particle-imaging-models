@@ -14,12 +14,12 @@ auto-detect the GPU arch / honor `TORCH_CUDA_ARCH_LIST` instead of hard-coding
 
 ## Build
 
-Built automatically alongside the other `libs/` extensions by
-`.github/docker/common/install_cuda_exts.sh` (used by both the Docker image and
-the `install.sh` conda installer). To build it by hand:
+Built automatically with the other local extensions by `uv sync`.
+To force a rebuild:
 
 ```bash
-TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" pip install ./libs/serialize_cuda --no-build-isolation
+TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" \
+  uv sync --all-extras --locked --reinstall-package serialize-cuda
 ```
 
 ## Use

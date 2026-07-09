@@ -2,7 +2,7 @@
 sd_hide_title: true
 ---
 
-# pimm — Particle Imaging Models
+# pimm - Particle Imaging Models
 
 :::{div} pimm-hero
 
@@ -12,11 +12,11 @@ sd_hide_title: true
 :width: 96px
 ```
 
-# Particle Imaging Models
+# particle imaging models (pimm)
 
-[Foundation-model research for neutrino & particle-imaging detectors.]{.pimm-tagline}
+[Foundation-model research for particle-imaging detectors.]{.pimm-tagline}
 
-```{button-ref} getting_started/installation
+```{button-ref} getting_started/overview
 :ref-type: myst
 :color: primary
 :class: sd-px-4 sd-fs-6
@@ -33,10 +33,18 @@ View on GitHub
 
 ---
 
-**pimm** adapts modern deep-learning and computer-vision methods to train models that learn to understand sparse data from detectors in high energy physics. It provides several model backbones, self-supervised
-foundation model pre-training recipes, and models for fine-tuning for downstream tasks. Models can be trained on a local system on 1 or more GPUs, or on many GPUs across several nodes.
+pimm is a framework for pre-training and fine-tuning point cloud foundation models for sparse data from high energy physics experiments. It is designed to be easy to use and hackable, yet capable of scaling to 128+ GPUs. It provides:
 
-## Quick start
+1. Pre-training and fine-tuning recipes for foundation model development.
+2. Native implementations and uses of modern deep learning methods that allow you to scale: [DDP](), [FSDP2](), [flash-attention]()
+3. One-line multi-node deployment with SLURM (and HTCondor -- experimental).
+4. Hackable, modular, and extensible by design.
+5. One-line loading and saving of models from HuggingFace
+6. End-to-end pre-training, fine-tuning, and evaluation.
+
+## Setup
+
+
 
 First, clone the repository.
 
@@ -45,137 +53,90 @@ git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
 cd particle-imaging-models
 ```
 
+Then get pimm running through a container or a local uv environment.
+Each path runs pimm from your clone, so your checkout is the pimm source.
+
 ::::{tab-set}
 
-:::{tab-item} Singularity / Apptainer (Recommended)
-Pull the image, then run pimm from your clone directory — the container uses your
-checkout as the pimm source. Run a command directly, or open a shell first:
+:::{tab-item} Local (uv)
 ```bash
-apptainer pull /path/to/pimm.sif docker://youngsm/pimm:main
+# requires Linux x86_64, CUDA 12.4 with nvcc, GCC/G++ 9-12, and sparsehash
+./install.sh
+uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
+```
+:::
+
+:::{tab-item} Singularity / Apptainer (recommended)
+```bash
+apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
 
 # run a command directly:
-apptainer run --nv /path/to/pimm.sif pimm launch --train.config <config>
+apptainer run --nv /path/to/pimm.sif \
+  pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 
 # ...or open a shell, then run pimm inside:
 apptainer run --nv /path/to/pimm.sif
-pimm launch --train.config <config>
+pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 :::
 
 :::{tab-item} Docker
-Make sure Docker's running, then run pimm from your clone directory — it uses your
-checkout as the pimm source. Run a command directly, or open a shell first:
 ```bash
 # run a command directly:
-docker run --rm --gpus all -v "$PWD:$PWD" -w "$PWD" youngsm/pimm:main \
-  pimm launch --train.config <config>
+docker run --rm --gpus all -v "$PWD:$PWD" -w "$PWD" youngsm/pimm:pytorch2.5.0-cuda12.4 \
+  pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 
 # ...or open a shell, then run pimm inside:
-docker run --rm -it --gpus all -v "$PWD:$PWD" -w "$PWD" youngsm/pimm:main bash
-pimm launch --train.config <config>
+docker run --rm -it --gpus all -v "$PWD:$PWD" -w "$PWD" youngsm/pimm:pytorch2.5.0-cuda12.4 bash
+pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 :::
 
-:::{tab-item} Local (conda)
-Use `install.sh` to build a full a conda (or mamba) env from the same `.github/docker` scripts.
-```bash
-# download and install Conda or Mamba if you haven't already
-curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-bash Miniforge3-$(uname)-$(uname -m).sh
-
-# initialize conda, then run:
-./install.sh                 # use --no-flash to skip flash-attn
-conda activate pimm-torch2.5.0-cu124
-pimm launch --train.config <config>
-```
-:::
 
 ::::
 
-Full details, image tags, and verification:
-{doc}`getting_started/installation`.
-
-## Minimal quick start
-
-```bash
-git clone https://github.com/deeplearnphysics/particle-imaging-models.git
-cd particle-imaging-models
-pip install -e . # install to some base environment (outside of the container)
-
-# if using singularity/apptainer
-apptainer pull /path/to/pimm.sif docker://youngsm/pimm:main
-
-# download PILArNet-M dataset
-python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dataset
-
-# deal with env vars: MODEL_DIR, WANDB_API_KEY, HF_TOKEN, HF_HOME, 
-cp example.env .env && nano .env
-
-# launch a local run on 4 GPUs
-apptainer exec --nv \
-  --bind "$PWD:/opt/pimm/src" \
-  --pwd /opt/pimm/src \
-  /path/to/pimm.sif \
-  pimm launch \
-    --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
-    --resources.nproc-per-node 4
-
-# or edit launch/sites/slurm.yaml and launch
-pimm submit --site slurm \
-    --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
-    --resources.nnodes 1 \
-    --resources.nproc-per-node 4 \
-    --resources.time 24:00:00 \
-    --slurm.account account \
-    --slurm.partition ampere 
-```
+The command above trains on a single GPU; add `--resources.nproc-per-node 4` for four.
+Full details, image tags, and verification: {doc}`getting_started/installation`.
+For a guided walk-through of your first run, follow the {doc}`getting_started/quickstart`.
 
 ## What's inside
 
-- {doc}`Quick start <getting_started/index>` — install from source or a
-  container, run your first job locally, and learn the three ideas (packed
-  tensors, registries, configs) that make pimm tick.
-- {doc}`Distributed training <distributed/index>` — one launch path for
+- {doc}`Quick start <getting_started/index>` - install from source or a
+  container, run your first job locally, and learn the three core ideas in
+  pimm: packed tensors, registries, and configs.
+- {doc}`Distributed training <distributed/index>` - one launch path for
   single-GPU, multi-GPU, and multi-node. DDP and FSDP2, deterministic
   checkpointing, exact mid-epoch resume across world-size changes.
-- {doc}`Scientific computing <hpc/index>` — interactive vs batch submission,
-  site profiles (S3DF, NERSC), QOS, requeue chaining, environment variables, job
+- {doc}`Training on a cluster <hpc/index>` - interactive vs batch submission,
+  site profiles for your cluster, QOS, requeue chaining, environment variables, job
   monitoring, and resuming.
-- {doc}`Checkpoints <checkpoints/index>` — one atomic, reshardable checkpoint
-  format for every parallelism. Save-cadence hooks, manual export, and automatic
+- {doc}`Checkpoints <checkpoints/index>` - one atomic, reshardable checkpoint
+  format for every parallelism. Save-frequency hooks, manual export, and automatic
   Hugging Face upload.
-- {doc}`Research ecosystem <research_ecosystem/index>` — load any export with
+- {doc}`Research ecosystem <research_ecosystem/index>` - load any export with
   `pimm.from_pretrained` and fine-tune from the Hub, then contribute your own
-  models, hooks, datasets, and transforms to the substrate.
-- {doc}`Datasets & transforms <datasets/index>` — the packed point-cloud
-  contract, PILArNet-M, multimodal LArTPC/Water-Cherenkov readers, and transform
+  models, hooks, datasets, and transforms to pimm.
+- {doc}`Datasets & transforms <datasets/index>` - the packed point-cloud format, PILArNet-M, multimodal LArTPC/Water-Cherenkov readers, and transform
   pipelines.
-- {doc}`Hooks <hooks/index>` — the lifecycle hook system (logging, diagnostics,
+- {doc}`Hooks <hooks/index>` - the lifecycle hook system (logging, diagnostics,
   evaluators, checkpoint savers).
-- {doc}`Evaluation <evaluation/index>` — in-loop evaluators, probe suites for
+- {doc}`Evaluation <evaluation/index>` - in-loop evaluators, probe suites for
   SSL, and final testing with `test.sh`.
-- {doc}`Tutorials <tutorials/index>` 
-- {doc}`API reference <api/index>`
+- {doc}`Core concepts <getting_started/concepts>` - what pimm does differently
+  if you are coming from another Pointcept-style codebase.
 
 ## Integrated works
 
-- **Backbones** — [PTv3](https://arxiv.org/abs/2312.10035),
+- **Backbones** - [PTv3](https://arxiv.org/abs/2312.10035),
   [PTv2](https://arxiv.org/abs/2210.05666),
   [PTv1](https://arxiv.org/abs/2012.09164), and SparseUNet (SpConv/Minkowski).
-- **Pre-training** — [Sonata](https://arxiv.org/abs/2503.16429) /
+- **Pre-training** - [Sonata](https://arxiv.org/abs/2503.16429) /
   [Panda](https://arxiv.org/abs/2512.01324) discriminative SSL and
   [PoLAr-MAE](https://arxiv.org/abs/2502.02558) masked autoencoding.
-- **Segmentation** — semantic segmentation, PointGroup, and the
+- **Segmentation** - semantic segmentation, PointGroup, and the
   [Panda Detector](https://arxiv.org/abs/2512.01324) panoptic model.
-- **Datasets** — [PILArNet-M](https://arxiv.org/abs/2502.02558), multimodal
+- **Datasets** - [PILArNet-M](https://arxiv.org/abs/2502.02558), multimodal
   JAXTPC, Water-Cherenkov (LUCiD).
-
-:::{seealso}
-Start with **{doc}`getting_started/installation`**, then the
-**{doc}`getting_started/quickstart`**. Coming from another Pointcept-style
-codebase? Skim **{doc}`getting_started/concepts`** for what pimm does
-differently.
-:::
 
 ---
 

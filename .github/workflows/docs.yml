@@ -43,6 +43,7 @@ on:
     paths:
       - 'docs/**'
       - 'pimm/**'
+      - 'uv.lock'
       - 'pyproject.toml'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
@@ -82,16 +83,12 @@ jobs:
           sudo docker image prune -af || true
           df -h /
 
-      # Build inside the project image (has torch/spconv/flash_attn/pimm). The
-      # image's default Python resolves `pimm`; we reinstall the checkout (no
-      # deps) so autodoc/gen_api document THIS commit, then add the Sphinx deps.
+      # build inside the locked project environment and document this checkout
       - name: Build the docs inside the project image
         run: |
-          docker run --rm -v "$PWD":/work -w /work \
+          docker run --rm -v "$PWD":/work -w /work -e PYTHONPATH=/work \
             youngsm/pimm:pytorch2.5.0-cuda12.4 \
-            bash -lc "pip install -e . --no-deps \
-                      && pip install -r docs/requirements.txt \
-                      && make -C docs html"
+            bash -lc "uv run --project /opt/pimm/src --no-sync make -C docs html"
           sudo chown -R "$(id -u):$(id -g)" docs/build
 
       # Assemble the Pages artifact: site under /stable/, plus a root redirect so

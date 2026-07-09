@@ -1,9 +1,9 @@
 # Configuration file for the Sphinx documentation builder.
 #
-# pimm — Particle Imaging Models documentation.
+# pimm - Particle Imaging Models documentation.
 # Built with Sphinx + MyST (Markdown) + sphinx-book-theme. The book theme is
 # PyData-based (so the --pst-* CSS variables apply) and renders the FULL nested,
-# collapsible section tree in the left sidebar on every page — every section is
+# collapsible section tree in the left sidebar on every page - every section is
 # reachable from anywhere, which pytorch_sphinx_theme2 / plain PyData cannot do
 # (they scope the left sidebar to the current section).
 # Narrative guides need only the doc deps, but the API reference uses autodoc
@@ -34,7 +34,7 @@ extensions = [
     "sphinx_sitemap",
     "sphinx.ext.intersphinx",
     "sphinx.ext.autosectionlabel",
-    # API reference (autodoc imports pimm — the build env has the full stack).
+    # API reference (autodoc imports pimm - the build env has the full stack).
     # Mirrors torchrl's reference stack.
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
@@ -119,7 +119,7 @@ myst_enable_extensions = [
 myst_heading_anchors = 3
 myst_substitutions = {
     "repo_url": "https://github.com/DeepLearnPhysics/particle-imaging-models",
-    "docker_image": "youngsm/pimm:main",
+    "docker_image": "youngsm/pimm:pytorch2.5.0-cuda12.4",
 }
 
 # -- Intersphinx -------------------------------------------------------------
@@ -136,7 +136,10 @@ html_theme = "sphinx_book_theme"
 html_title = "pimm"
 html_static_path = ["_static"]
 html_css_files = ["custom.css", "launch_selector.css"]
-html_js_files = ["launch_selector.js"]
+html_js_files = [
+    ("custom-icons.js", {"defer": "defer"}),
+    "launch_selector.js",
+]
 html_logo = "_static/logo.svg"
 html_favicon = "_static/logo.svg"
 
@@ -149,7 +152,7 @@ html_theme_options = {
         "text": "pimm",
         "image_light": "_static/logo.svg",
         "image_dark": "_static/logo.svg",
-        "alt_text": "pimm — Particle Imaging Models",
+        "alt_text": "pimm - Particle Imaging Models",
     },
     "repository_url": "https://github.com/DeepLearnPhysics/particle-imaging-models",
     "repository_branch": "main",
@@ -159,7 +162,7 @@ html_theme_options = {
     "use_edit_page_button": False,
     "use_download_button": False,
     "use_fullscreen_button": False,
-    "home_page_in_toc": False,
+    "home_page_in_toc": True,
     # Left sidebar: render the whole tree, expanded a couple of levels, deep
     # enough to reach every page.
     "show_navbar_depth": 2,
@@ -176,18 +179,21 @@ html_theme_options = {
         {
             "name": "Hugging Face",
             "url": "https://huggingface.co/DeepLearnPhysics",
-            "icon": "fa-solid fa-cube",
+            # fa-hugging-face only exists in Font Awesome 7.2+, but the theme
+            # bundle on the deployed site can lag behind - register our own copy.
+            "icon": "fa-custom fa-huggingface",
+            "type": "fontawesome",
         },
         {
             "name": "DeepLearnPhysics",
             "url": "https://deeplearnphysics.org",
-            "icon": "fa-solid fa-atom",
+            "icon": "fa-solid fa-globe",
         },
     ],
     "pygments_light_style": "tango",
     "pygments_dark_style": "monokai",
     "announcement": (
-        "pimm is research software under active development — "
+        "pimm is research software under active development - "
         "APIs and configs may change between versions."
     ),
 }

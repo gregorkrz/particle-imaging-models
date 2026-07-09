@@ -52,7 +52,7 @@ points ─▶ PT-v3m2 encoder (frozen, Sonata-pretrained) ─▶ point features
 The detector supervises per-instance masks, so your dataset must provide a
 per-point `instance` id alongside the per-point class. `detector-v4` reads them
 from the keys named in its `label_configs` (here `instance_particle` and
-`segment_pid`), which PILArNet-M v2 already provides — so you just `Collect` them
+`segment_pid`), which PILArNet-M v2 already provides - so you just `Collect` them
 (no `Copy` to rename):
 
 ```python
@@ -128,7 +128,7 @@ A few things worth understanding:
   comfortably above your busiest event's particle count.
 - **Stuff vs things.** `stuff_classes=[5]` marks the low-energy-deposit class as
   "stuff" (segmented as a region, not counted as instances), the rest are
-  "things" (counted instances) — standard panoptic terminology.
+  "things" (counted instances) - standard panoptic terminology.
 - **The loss is set-based.** `FastUnifiedInstanceLoss` does Hungarian
   matching between predicted and truth instances, then applies focal (class) +
   dice + mask costs; `truth_label="instance"` selects the supervision target.
@@ -168,21 +168,21 @@ dict(
 Then point `--train.weight` at the pretrained checkpoint:
 
 ```bash
-pimm submit --site s3df \
+pimm submit --site mycluster \
   --train.config panda/panseg/detector-v4-pt-v3m2-ft-pid-dec \
   --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
 
 :::{note}
 `hf://<your-org>/sonata-pilarnet-L/model_best.pth` is a placeholder for **your**
-Sonata SSL checkpoint — its `student.backbone.*` keys are what the
-`CheckpointLoader` remap below expects. Produce one with a `configs/panda/pretrain/`
+Sonata SSL checkpoint - its `student.backbone.*` keys are what the
+`CheckpointLoader` remap below requires. Produce one with a `configs/panda/pretrain/`
 recipe, or run the `-scratch` variant. Released task detectors for *inference*
-(loaded with `from_pretrained`) are on the Hub — see {doc}`../research_ecosystem/using_trained_models`.
+(loaded with `from_pretrained`) are on the Hub - see {doc}`../research_ecosystem/using_trained_models`.
 :::
 
 :::{important}
-A remap matching **zero** parameters raises — so a silent random-init can't
+A remap matching **zero** parameters raises - so a silent random-init can't
 happen. After launch, confirm the load reported no missing backbone keys, and
 judge success by the decoder losses (`loss_cls`, `dice`) trending down, not just
 the absence of errors. See {doc}`../checkpoints/saving_and_loading`.
@@ -238,15 +238,15 @@ test = dict(type="InstanceSegTester", stuff_classes=[5],
 
 {py:class}`~pimm.engines.hooks.eval.instance_segmentation.InstanceSegmentationEvaluator` reports detection/class statistics, ARI, and
 (when present) momentum-regression metrics. It **requires validation batch size
-1** — hence `val_batch_size = 1`. See {doc}`../evaluation/index` and
+1** - hence `val_batch_size = 1`. See {doc}`../evaluation/index` and
 {doc}`../hooks/diagnostics` (for {py:class}`~pimm.engines.hooks.diagnostics.ParameterCounter`, {py:class}`~pimm.engines.hooks.diagnostics.AttentionMaskAnnealingHook`).
 
 ## 5. Quick check, then train
 
 ```bash
-# smoke
+# quick check
 pimm launch --train.config panda/panseg/detector-v4-pt-v3m2-ft-pid-dec \
-  --run.name det-smoke \
+  --run.name det-quickcheck \
   -- epoch=1 data.train.max_len=64 data.val.max_len=16 \
      batch_size=4 num_worker=0 use_wandb=False
 
@@ -262,7 +262,7 @@ Detector runs are longer; on a walltime-limited queue, chain them so an attempt
 that times out resumes from the latest complete checkpoint:
 
 ```bash
-pimm submit --site s3df --recipe launch/runs/ft_sphenix_panoptic_pid.yaml \
+pimm submit --site mycluster --recipe launch/runs/my_finetune.yaml \
   --train.config panda/panseg/detector-v4-pt-v3m2-ft-pid-dec \
   --chain.jobs 4 --resources.time 02:00:00 \
   --run.name det-pid-chain
@@ -276,7 +276,7 @@ resources, account, and partition.
 
 Load the trained detector and turn raw events into **per-point** instances, PIDs,
 and scores. Instance labels aren't needed at inference, but the coord/energy
-transform must match training — and the detector needs `postprocess()` to turn
+transform must match training - and the detector needs `postprocess()` to turn
 per-query masks into per-point predictions. (`forward` alone returns raw query
 tensors, which is the step most people stop at by mistake.)
 
@@ -309,7 +309,7 @@ with torch.no_grad():
     out = model(batch, return_point=True)        # return_point=True is required
 point = out["point"]
 
-# Turn per-query masks/logits into per-point predictions — the same call the
+# Turn per-query masks/logits into per-point predictions - the same call the
 # InstanceSegmentationEvaluator makes internally.
 preds = model.postprocess({
     "pred_masks":   out["pred_masks"],
@@ -345,6 +345,6 @@ You've gone from per-point labels to per-instance masks + PID by:
 
 ## See also
 
-- {doc}`byo_dataset_semseg` — the foundation this builds on.
-- {doc}`../research_ecosystem/using_trained_models` — the published `detector-v4` checkpoints.
-- {doc}`../evaluation/index` — panoptic metrics in depth.
+- {doc}`byo_dataset_semseg` - the foundation this builds on.
+- {doc}`../research_ecosystem/using_trained_models` - the published `detector-v4` checkpoints.
+- {doc}`../evaluation/index` - panoptic metrics in depth.

@@ -2,7 +2,7 @@
 
 A transform pipeline turns the **flat numpy dict** a dataset produces into the
 **packed tensor batch** a model consumes. Transforms own augmentation, label
-remapping, tensor conversion, and the final key/feature selection — datasets
+remapping, tensor conversion, and the final key/feature selection - datasets
 stay focused on loading and fusing raw arrays.
 
 ## `transform` is a list of dicts
@@ -67,9 +67,7 @@ transform = [
     constant `768 * sqrt(3) / 2 ≈ 665.1076` is the half-diagonal of the
     PILArNet `768³` volume, mapping the detector into roughly `[-1, 1]³`.
 * - `LogTransform`
-  - Compresses `energy` with a log scale (clipped to `[min_val, max_val]`). For
-    PILArNet the **`min_val` must equal the energy threshold** (`0.13`); using
-    the wrong floor produces garbage features.
+  - Compresses `energy` with a log scale (clipped to `[min_val, max_val]`).
 * - `GridSample`
   - Voxelizes onto a hash grid of size `grid_size` (in *normalized* units) and
     deduplicates points per voxel. `mode="train"` samples one point per voxel;
@@ -93,7 +91,7 @@ transform = [
 Geometric transforms ({py:class}`~pimm.datasets.transform.spatial.NormalizeCoord`, {py:class}`~pimm.datasets.transform.spatial.GridSample`, {py:class}`~pimm.datasets.transform.spatial.RandomRotate`,
 {py:class}`~pimm.datasets.transform.spatial.RandomFlip`, ...) operate on `coord`. Whatever your dataset calls its primary
 spatial array, it must be named `coord` for these to find it. Labels usually end
-up as `segment` and `instance` by the time the model sees the batch — copy or
+up as `segment` and `instance` by the time the model sees the batch - copy or
 remap dataset-specific labels into those names before `Collect`.
 
 :::{note}
@@ -138,7 +136,7 @@ subsampling, or never registered, will not be indexed and will mismatch `N`.
 
 ## The final `Collect`
 
-{py:class}`~pimm.datasets.transform.base.Collect` is the projection that produces the model contract. Given:
+{py:class}`~pimm.datasets.transform.base.Collect` is the projection that produces the model input format. Given:
 
 ```python
 dict(type="Collect",
@@ -155,7 +153,7 @@ it does three things:
    {doc}`data_format`).
 3. **Builds feature tensors** from any `*_keys` keyword: each such argument is
    `torch.cat`'d along dim 1, so `feat_keys=("coord", "energy")` yields
-   `feat = concat([coord, energy], dim=1)` — here a 4-channel `[x, y, z, E]`
+   `feat = concat([coord, energy], dim=1)` - here a 4-channel `[x, y, z, E]`
    feature. You can define multiple feature groups (e.g. `feat_keys=...` and a
    second `*_keys` argument) and each becomes its own concatenated tensor named
    after the prefix.
@@ -174,7 +172,7 @@ without a leading underscore must be a collatable tensor, string, or sequence.
 
 ## Transform catalog
 
-Every transform registered in `TRANSFORMS` — drop any of them into a `transform`
+Every transform registered in `TRANSFORMS` - drop any of them into a `transform`
 list by `type`. Full constructor signatures are in the
 {doc}`API reference <../api/index>`.
 
@@ -209,11 +207,6 @@ list by `type`. Full constructor signatures are in the
   - `ConditionalRandomTransform`, `SetRandomValue`
 ```
 
-:::{tip}
-`PDGToSemantic` carries the `pid_6cls` PDG→class map used by the Panda detector
-(`{22:0, 11:1, 13:2, 211:3, 2212:4}`, everything else → `5` / "led").
-:::
-
 ## Reproducing the pipeline at inference
 
 The single most common reason a loaded model gives garbage predictions is a
@@ -224,8 +217,8 @@ went through the *same* transform pipeline and arrives as the *same* packed batc
 
 :::{important}
 Coordinate normalization and the energy {py:class}`~pimm.datasets.transform.color.LogTransform` are **part of the
-model's contract**, not optional cosmetics. The PoLAr-MAE checkpoints, for
-example, require `LogTransform(min_val=0.13)` (the energy threshold) — using
+model's input format**, not optional cosmetics. The PoLAr-MAE checkpoints, for
+example, require `LogTransform(min_val=0.13)` (the energy threshold) - using
 `0.01` produces near-random results. Always reuse the transform from the run's
 saved config.
 :::
@@ -265,7 +258,7 @@ transform = Compose([
     dict(type="Collect", keys=("coord", "grid_coord"), feat_keys=("coord", "energy")),
 ])
 
-# 2. A raw event as a flat dict of numpy arrays — same keys the dataset produces.
+# 2. A raw event as a flat dict of numpy arrays - same keys the dataset produces.
 event = {
     "coord":  coords_np.astype(np.float32),    # (N, 3) raw detector coordinates
     "energy": energy_np.astype(np.float32),    # (N, 1) raw energy
@@ -280,9 +273,9 @@ batch = collate_fn([sample])
 
 `feat_keys=("coord", "energy")` is what makes `feat` 4-dimensional
 (`in_channels=4` in most configs: xyz + energy). If your model used different
-`feat_keys`, match them — the backbone's `in_channels` is fixed at training time.
+`feat_keys`, match them - the backbone's `in_channels` is fixed at training time.
 
-### …or just let the dataset do it
+### Building the batch from the dataset
 
 Often the least error-prone path is to build the dataset from the saved config
 and let it apply the transform internally:
@@ -307,7 +300,7 @@ Then run inference as in {doc}`../research_ecosystem/using_trained_models`.
   - Fix
 * - Wrong `LogTransform` `min_val`
   - Use the value from the run's config (e.g. `0.13` for PoLAr-MAE = the energy
-    threshold). The original library mutates `emin` to the threshold internally.
+    threshold).
 * - Skipped `NormalizeCoord`
   - `NormalizeCoord(scale=X)` computes `(coord - center) / scale`. Many models
     normalize to roughly `[-1, 1]^3`; the constant `768 * sqrt(3) / 2 ≈ 665.1`
@@ -316,7 +309,7 @@ Then run inference as in {doc}`../research_ecosystem/using_trained_models`.
   - `feat` must have the same channel count and order as training, or the
     backbone's first layer is fed nonsense.
 * - Forgetting `grid_coord`
-  - Sparse backbones expect the gridded coordinate from `GridSample`. Keep
+  - Sparse backbones require the gridded coordinate from `GridSample`. Keep
     `return_grid_coord=True` and `Collect` it.
 * - `low_energy_scatters`
   - Some evaluations need `remove_low_energy_scatters=True` to match the trained
@@ -327,10 +320,3 @@ Checklist: read the transform from the run's `config.py` / `config.json` (don't
 invent numbers); match `feat_keys` (and therefore `in_channels`) exactly; keep
 `grid_coord` if the model uses a sparse backbone; collate into a packed batch;
 and move tensors to the model's device before calling `model(batch)`.
-
-## See also
-
-- {doc}`data_format` — what `Collect` + collation produce.
-- {doc}`pilarnet` — the output keys these pipelines consume.
-- {doc}`../research_ecosystem/contributing_a_transform` — write your own transform (preprocessing, augmentation, multi-view).
-- {doc}`../research_ecosystem/using_trained_models` — loading the model these batches feed.

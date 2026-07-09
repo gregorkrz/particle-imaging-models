@@ -18,7 +18,7 @@ container:
   runtime: shifter
   image: youngsm/pimm-nersc:main
   module: gpu,nccl-plugin
-  interpreter: /opt/conda/bin/python
+  interpreter: /opt/pimm/.venv/bin/python
   unset_env:
     - LD_LIBRARY_PATH
     - LD_PRELOAD

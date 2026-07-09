@@ -112,7 +112,7 @@ def interpreter_args(cfg: dict[str, Any]) -> list[str]:
     Priority: explicit `train.python`; else, when a container is configured, its
     absolute `container.interpreter` (None -> rely on the image's `python` on
     PATH); else, for a local run with no container, the launcher's own
-    `sys.executable` (the active conda env). For a Slurm run with no container,
+    `sys.executable` (the active project environment). For a Slurm run with no container,
     return [] so train.sh uses its own `python` default.
     """
     train_cfg = cfg.get("train", {})
@@ -176,10 +176,8 @@ def build_container_command(cfg: dict[str, Any], train_cmd: str) -> str:
     )
     inner_cmd = "\n".join([*setup, train_cmd])
 
-    # Enter the container with a hermetic shell: do NOT source the host
-    # ~/.bash_profile/~/.bashrc, whose conda init (often an absolute-path call)
-    # would shadow the image's interpreter. The image's own ENV provides PATH; any
-    # module/env setup belongs in `container.setup`, not the user's dotfiles.
+    # enter with a clean shell so host startup files cannot shadow the image's
+    # interpreter; image and site setup provide the required environment
     shell = ["--noprofile", "--norc", "-c"]
 
     if runtime == "singularity":

@@ -8,14 +8,14 @@ Markdown](https://myst-parser.readthedocs.io), and the [PyData Sphinx
 Theme](https://pydata-sphinx-theme.readthedocs.io). The narrative guides need
 only the doc dependencies, but the **API reference uses `autodoc`** (and
 `gen_api.py` enumerates the live registries), so a full `make html` **imports
-`pimm`** and must run in an environment that can do so (the project conda/mamba
-env or the project Docker image). See `DEPLOYMENT.md` for the CI build.
+`pimm`** and must run in the full project environment or the project image.
+See `.github/workflows/docs.yml` for the CI build.
 
 ## Build
 
 ```bash
-# Recommended: the project conda/mamba env (can import pimm; has sphinx)
-conda run -n pointcept-torch2.5.0-cu12.4 make -C docs html
+uv sync --all-extras --group docs --locked
+uv run --group docs make -C docs html
 ```
 
 The first build is slow (autodoc imports the package and generates a page per
@@ -36,7 +36,6 @@ make -C docs serve   # http://localhost:8000
 ```text
 docs/
   Makefile             # make html / clean / serve / linkcheck
-  requirements.txt     # build deps (sphinx, theme, myst, ...)
   source/
     conf.py            # Sphinx + theme configuration
     index.md           # landing page

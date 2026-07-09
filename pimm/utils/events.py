@@ -661,7 +661,8 @@ class WandbWriter(EventWriter):
         """
         if wandb is None:
             raise ImportError(
-                "To use WandbWriter, please install wandb using: pip install wandb"
+                "WandbWriter requires the training environment; "
+                "run `uv sync --all-extras --locked`"
             )
         
         self._window_size = window_size

@@ -1,8 +1,8 @@
 # Exporting
 
-A training checkpoint carries everything needed to *resume* — optimizer, RNG,
-dataloader state, and so on ({doc}`index`). To **share** a model — for
-fine-tuning, uploading to the Hub, or shipping elsewhere for inference — you only
+A training checkpoint carries everything needed to *resume* - optimizer, RNG,
+dataloader state, and so on ({doc}`index`). To **share** a model - for
+fine-tuning, uploading to the Hub, or shipping elsewhere for inference - you only
 need the weights. `pimm.export` produces these portable weights and can optionally
 publish them to Hugging Face.
 
@@ -56,7 +56,7 @@ save_pretrained(
 The first argument may be a `torch.nn.Module`, a raw state-dict, a checkpoint
 mapping (with `state_dict`/`model`), or a checkpoint path. The config is recorded
 by priority: explicit `training_config` > `cfg` > `config_path` > the run dir
-around a checkpoint path — so you don't need to pass `training_config` if it's
+around a checkpoint path - so you don't need to pass `training_config` if it's
 already next to your checkpoint.
 
 ## Verify the round trip
@@ -72,12 +72,6 @@ print(meta["model_config"])   # config used to rebuild the architecture
 ```
 
 A good export reloads with `strict=True` (the default) and no errors. If you only
-want *part* of the saved weights — for example just the student backbone from a
-Sonata export — see {doc}`saving_and_loading`, which covers submodel loading and
+want *part* of the saved weights - for example just the student backbone from a
+Sonata export - see {doc}`saving_and_loading`, which covers submodel loading and
 key remapping.
-
-## Next
-
-- {doc}`huggingface` — push exports (or raw checkpoints) to the Hub.
-- {doc}`saving_and_loading` — load an export, including partial/submodel loads.
-- {doc}`../research_ecosystem/using_trained_models` — loading exports for inference and fine-tuning.

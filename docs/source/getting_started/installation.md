@@ -1,215 +1,227 @@
 # Installation
 
-Pick one of three ways to get the environment. **All three share one source of
-truth** for dependencies under `.github/docker/`:
+pimm uses [uv](https://docs.astral.sh/uv/) for Python, dependency resolution, and the project environment.
+The exact dependency set is stored in `uv.lock` and is shared by local installs, container images, and documentation builds.
 
-- `common/versions.sh` — the pins (torch, CUDA, flash-attn, arch list)
-- `requirements/{requirements,requirements-cuda,requirements-dev}.txt`
-- `common/install_*.sh` — the install steps
-
-The Docker image build and the local conda installer (`install.sh`) run the
-**same** scripts, so the container and the conda env resolve to the same
-torch / CUDA / extension stack.
-
-Pre-built images are on Docker Hub:
-
-| Image | Description |
-|-------|-------------|
-| `youngsm/pimm:pytorch2.5.0-cuda12.4` | Standard image (`:main` tracks latest `main`) |
-| `youngsm/pimm-nersc:pytorch2.5.0-cuda12.4` | NERSC/Shifter variant: MPI-aware HDF5 + `mpi4py` |
+Clone the repository before choosing an installation path:
 
 ```bash
 git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
 cd particle-imaging-models
 ```
 
-## Option A — Singularity / Apptainer (recommended on HPCs)
+## Prerequisites
 
-First, pull the container from Dockerhub and rebuilt as a singularity image (`pimm.sif`):
+A full local training installation requires:
+
+- Linux on x86_64.
+- An NVIDIA GPU and a compatible driver.
+- The CUDA 12.4 toolkit, including `nvcc`.
+- GCC and G++ 9 through 12.
+- The sparsehash headers.
+
+uv installs Python 3.10, CMake, Ninja, PyTorch, and the remaining Python packages.
+uv does not install the CUDA toolkit, host compiler, or sparsehash because they are system-level build dependencies.
+
+On Ubuntu, the compiler and sparsehash headers are available through:
+
+```bash
+sudo apt update
+sudo apt install build-essential libsparsehash-dev
+```
+
+Install CUDA 12.4 using the [NVIDIA CUDA installation guide](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/), or load the CUDA and compiler modules provided by your cluster.
+For example:
+
+```bash
+module load cuda/12.4 gcc/12
+```
+
+The installer checks these requirements before downloading the training environment.
+It does not invoke `sudo` or modify system packages.
+
+## Local uv environment
+
+Run the installer from the repository root:
+
+```bash
+./install.sh
+```
+
+The installer:
+
+1. Installs uv with the official Astral installer if uv is not already available.
+2. Validates CUDA 12.4, the host compiler, sparsehash, and the visible NVIDIA GPUs.
+3. Detects the compute capability of each visible GPU.
+4. Creates `.venv` and installs the versions recorded in `uv.lock`.
+5. Builds the six local CUDA extensions for the detected GPU architectures.
+6. Verifies the CUDA packages and extensions can be imported.
+
+Run project commands through uv without activating the environment:
+
+```bash
+uv run pimm launch --help
+uv run python scripts/download_pilarnet.py --help
+```
+
+You can also activate `.venv` and use `pimm` or `python` directly:
+
+```bash
+source .venv/bin/activate
+pimm launch --help
+```
+
+### FlashAttention
+
+The default install downloads the official FlashAttention 2.7.3 wheel built for Python 3.10, PyTorch 2.5, and CUDA 12.
+It does not compile FlashAttention from source.
+
+Install without FlashAttention when every selected model has `enable_flash=False`:
+
+```bash
+./install.sh --no-flash
+```
+
+### Repeated installs and extension rebuilds
+
+uv reuses downloaded packages and compiled extension wheels.
+Running the installer again does not rebuild unchanged extensions.
+
+Each local extension tracks its C++, CUDA, header, Python, compiler, CUDA path, and `TORCH_CUDA_ARCH_LIST` inputs.
+Changing one of those inputs rebuilds only the affected package.
+To force one extension to rebuild, run:
+
+```bash
+uv sync --all-extras --locked --reinstall-package pointops
+```
+
+Set `TORCH_CUDA_ARCH_LIST` before installation when building for a GPU that is not visible on the build host:
+
+```bash
+TORCH_CUDA_ARCH_LIST="8.0 9.0" ./install.sh
+```
+
+## Launcher-only environment
+
+A login or submit host that only runs `pimm submit` does not need PyTorch or the CUDA extensions.
+Install the small launcher environment with:
+
+```bash
+./install.sh --launcher-only
+uv run pimm submit --help
+```
+
+The full training environment remains inside the selected container on compute nodes.
+
+## Apptainer or Singularity
+
+The prebuilt image is the shortest path on an HPC system:
 
 ```bash
 apptainer pull pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
 ```
 
-Run pimm from your clone directory — the container uses your checkout as the pimm
-source. Run a command directly:
+Run from the repository root so the image imports the current checkout:
 
 ```bash
 apptainer run --nv pimm.sif \
   pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
-…or open a shell and work inside:
+For managed batch jobs, `pimm submit` wraps the training command in the configured image.
+See {doc}`../hpc/sites`.
+
+## Docker
+
+Build the standard image from the same lockfile:
 
 ```bash
-apptainer run --nv pimm.sif
-# now inside the container:
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
+docker build -f .github/docker/Dockerfile -t pimm:local .
 ```
 
-For batch jobs you don't enter the container yourself — `pimm submit` wraps
-`train.sh` in the container for you. See {doc}`../hpc/sites`.
-
-## Option B — Docker (local dev, or building images)
-
-Build the image, then run pimm from your clone directory — the container uses
-your checkout as the pimm source. Run a command directly:
+Run a command from the current checkout:
 
 ```bash
-# build (standard; NERSC variant: -f .github/docker/Dockerfile.nersc)
-docker build -f .github/docker/Dockerfile -t pimm:local .
-
 docker run --rm --gpus all -v "$PWD:$PWD" -w "$PWD" pimm:local \
   pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
-…or open a shell and work inside:
+The uv environment is stored at `/opt/pimm/.venv`, outside `/opt/pimm/src`.
+Binding a checkout over the image source therefore does not hide the installed environment.
+
+The NERSC image adds MPICH, parallel HDF5, `mpi4py`, and an MPI-enabled build of `h5py`:
 
 ```bash
-docker run --rm -it --gpus all -v "$PWD:$PWD" -w "$PWD" pimm:local bash
-# now inside the container:
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
+docker build -f .github/docker/Dockerfile.nersc -t pimm-nersc:local .
 ```
 
-Build args default to those found in `.github/docker/common/versions.sh`: `TORCH_VERSION`,
-`CUDA_VERSION`, `CUDA_VERSION_NO_DOT`, `CUDNN_VERSION`, `TORCH_CUDA_ARCH_LIST`.
-The entrypoint sets `PYTHONNOUSERSITE=1` and neutralizes host conda/mamba shell
-hooks, so bind-mounted home directories don't shadow the image's packages.
+## Verify the environment
 
-## Option C — Local conda env (no container)
-
-`install.sh` creates a conda env using the same `.github/docker` scripts the
-image build uses. conda provides only the toolchain (nvcc + matching compilers +
-sparsehash); pip installs torch and everything else.
+Check the locked Python and CUDA stack:
 
 ```bash
-./install.sh                 # GPU env, builds flash-attn (matches the image)
-#   ./install.sh --no-flash  # skip the slow flash-attn source build
-#   ./install.sh --cpu       # CPU-only: skip CUDA wheels/extensions
-#   ./install.sh --name foo  # custom env name (default: pimm-torch2.5.0-cu124)
-conda activate pimm-torch2.5.0-cu124
+uv run python - <<'PY'
+import flash_attn
+import pointops
+import spconv
+import torch
+import torch_scatter
+
+print(torch.__version__)
+print(torch.version.cuda)
+print(torch.cuda.get_device_name())
+PY
 ```
 
-It installs torch + torchvision (pinned), the python deps, the PyG/spconv CUDA
-wheels, the local CUDA extensions under `libs/`, and `pimm` editable.
-
-:::{note}
-**A GPU is not required to install** — the CUDA extensions cross-compile for
-`TORCH_CUDA_ARCH_LIST` (defaulted in `versions.sh`) via `nvcc`; no device is
-touched at build time. Set it for your hardware if it's not in the default list,
-e.g. `TORCH_CUDA_ARCH_LIST="8.6" ./install.sh`. A GPU is only needed to *train*.
-FlashAttention is optional — `--no-flash` skips it, and configs run with
-`enable_flash=False`.
-:::
-
-:::{note}
-**CUDA point-serialization backend.** One of the `libs/` extensions,
-`serialize_cuda` (vendored from
-[`point_serialization_cuda`](https://github.com/ChristianSchott/point_serialization_cuda)),
-provides CUDA kernels for z-order / Hilbert serialization. When built, it is a
-transparent drop-in: `pimm.models.utils.serialization` routes CUDA tensors
-through it (~20% faster PTv3 inference, bit-for-bit identical to the PyTorch
-encoders) and falls back to PyTorch otherwise. Set
-`PIMM_DISABLE_SERIALIZE_CUDA=1` to force the PyTorch path.
-:::
-
-### Editable install everywhere you launch
-
-Because `pimm` is a console-script entry point, every host where you run
-`pimm launch` / `pimm submit` needs the checkout installed in the active
-environment (the options above all do this):
+Then run a short training job.
+This command still requires PILArNet-M v1 on disk:
 
 ```bash
-pip install -e .
-# equivalent without an editable install:
-python -m pimm.cli launch ...
-```
-
-Confirm:
-
-```bash
-python -c "import pimm; print(pimm.__file__)"
-pimm launch --help
-```
-
-## Verify the install
-
-A fast, light first run that builds the model, dataloader, and trainer and runs a
-couple of steps. The `max_len` flags **cap** how many events are used to keep the
-run short — they do *not* remove the data requirement. This command needs
-**PILArNet-M (v1) on disk and an NVIDIA GPU**:
-
-```bash
-pimm launch \
+uv run pimm launch \
   --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
   -- epoch=1 data.train.max_len=32 data.val.max_len=16 \
      batch_size=4 num_worker=0 use_wandb=False
 ```
 
-If this runs an epoch and writes an `exp/.../` directory, your install is good.
-`pimm launch` runs on the current node and auto-detects all visible GPUs by
-default.
-
-:::{note}
-**Prerequisites.** No data yet? Fetch a revision first with `python
-scripts/download_pilarnet.py --version v1` (see {doc}`../datasets/pilarnet`). No
-GPU on this machine? The run starts but `torchrun` exits with `RuntimeError: no
-CUDA devices available` — run it on a GPU node (see {doc}`../hpc/index`). There is
-currently no data-free or CPU-only smoke test.
-:::
-
-:::{note}
-**Prerequisites.** No data yet? Fetch a revision first with `python
-scripts/download_pilarnet.py --version v1` (see {doc}`../datasets/pilarnet`). No
-GPU on this machine? The run starts but `torchrun` exits with `RuntimeError: no
-CUDA devices available` — run it on a GPU node (see {doc}`../hpc/index`). There is
-currently no data-free or CPU-only smoke test.
-:::
-
 ## Environment variables
 
-Scripts load a `.env` from the repo root if present (existing shell variables
-win):
+Scripts load `.env` from the repository root when it exists, while existing shell variables take precedence:
 
 ```bash
 cp example.env .env
 ```
 
-| Variable | Purpose |
-|----------|---------|
-| `PILARNET_DATA_ROOT_V1`, `_V2` | PILArNet-M data roots per revision |
-| `MODEL_DIR` | Redirect (large) checkpoints to another filesystem; the experiment `model/` becomes a symlink |
-| `WANDB_API_KEY` | Alternative to `wandb login` |
-| `TORCH_CUDA_ARCH_LIST` | Target GPU archs for building the CUDA extensions |
-
-`PILArNetH5Dataset` also falls back to `~/.cache/pimm/pilarnet/<revision>` when
-no data-root variable is set. See {doc}`../datasets/pilarnet` for downloading.
+- `PILARNET_DATA_ROOT_V1` and `PILARNET_DATA_ROOT_V2` select local PILArNet-M revisions.
+- `MODEL_DIR` redirects checkpoints to another filesystem.
+- `WANDB_API_KEY` authenticates Weights & Biases.
+- `TORCH_CUDA_ARCH_LIST` overrides automatic GPU architecture detection.
+- `CUDA_HOME` selects the CUDA 12.4 toolkit used for extension builds.
+- `CC` and `CXX` select the host compilers.
+- `MAX_JOBS` controls native build parallelism and defaults to 2 in `install.sh`.
+- `PIMM_DISABLE_SERIALIZE_CUDA=1` disables the optional CUDA serialization backend.
 
 ## Troubleshooting
 
-:::{dropdown} `pimm: command not found`
-Run `pip install -e .` in the active environment, or use `python -m pimm.cli
-launch ...`. If imports resolve to the wrong checkout, inspect `PYTHONPATH` —
-non-dev training runs intentionally use the copied snapshot under
-`exp/.../code`; pass `--train.no-code-copy` (or `train.sh -C`) to run from the
-live source.
+:::{dropdown} `nvcc` is missing or reports another version
+Install CUDA 12.4 or load the matching cluster module.
+If more than one toolkit is installed, set `CUDA_HOME` before running `install.sh`.
 :::
 
-:::{dropdown} Sparse extension imports fail
-Verify these match each other: the PyTorch + CUDA versions, `spconv-cu124` (or
-the wheel matching your CUDA stack), the built output under `libs/pointops`,
-`libs/pointgroup_ops`, `libs/cnms`, `libs/pytorch3d_ops`, and your
-`TORCH_CUDA_ARCH_LIST` for the target GPUs. Make sure `ninja` is installed and
-CUDA 12.4 tooling is active.
+:::{dropdown} sparsehash is missing
+Install `libsparsehash-dev` on Debian or Ubuntu.
+On another distribution, install the package that provides `google/sparse_hash_map`.
 :::
 
-:::{dropdown} A model import fails on optional CUDA dependencies
-Importing `pimm.models` pulls in many model families, some with heavy CUDA
-deps. Tests sometimes import a narrower module to avoid this. For inference you
-usually only need the one family you are loading.
+:::{dropdown} an extension was built for the wrong GPU
+Set `TORCH_CUDA_ARCH_LIST` explicitly and reinstall that package with `uv sync --all-extras --locked --reinstall-package <package>`.
+:::
+
+:::{dropdown} a bare `uv sync` removed training packages
+Optional training dependencies are selected by `--all-extras`.
+Restore the full environment with `uv sync --all-extras --locked`.
 :::
 
 ## Next steps
 
-- {doc}`quickstart` — run a real job and learn the launcher flags.
-- {doc}`concepts` — the packed-tensor / registry / config mental model.
+- {doc}`quickstart` covers a complete training and fine-tuning run.
+- {doc}`concepts` explains packed tensors, registries, and Python configs.

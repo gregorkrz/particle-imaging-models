@@ -3,12 +3,12 @@
 A pimm training config is an **executable Python file** under `configs/`. It
 defines the model, dataset, transforms, optimizer, scheduler, trainer, hooks, and
 runtime scalars as plain Python variables, and it is the source of truth for
-*what* gets trained. (*How* and *where* a run executes — site, Slurm, container,
-resources — lives in the launch YAML the launchers read; see
+*what* gets trained. (*How* and *where* a run executes - site, Slurm, container,
+resources - lives in the launch YAML the launchers read; see
 {doc}`../getting_started/quickstart`.)
 
 :::{seealso}
-For the one-paragraph mental model — "configs are Python, execution is YAML" —
+For the one-paragraph mental model - "configs are Python, execution is YAML" -
 read {doc}`../getting_started/concepts` first.
 :::
 
@@ -29,7 +29,7 @@ seed = 0
 use_wandb = True
 wandb_project = "..."
 
-# Shared constants (ordinary Python — reusable below)
+# Shared constants (ordinary Python - reusable below)
 grid_size = 0.001
 warmup_ratio = 0.05
 
@@ -128,7 +128,7 @@ rejected before the child merges.
 
 ### Dicts merge recursively; lists replace
 
-For dictionary values, inheritance is recursive — the child patches only the keys
+For dictionary values, inheritance is recursive - the child patches only the keys
 it names:
 
 ```python
@@ -141,7 +141,7 @@ data = dict(train=dict(max_len=1000, loop=1))
 ```
 
 Lists are **not** patched element-by-element. A child that assigns `hooks`,
-`transform`, `criteria`, or any other list **replaces the whole list** — if you
+`transform`, `criteria`, or any other list **replaces the whole list** - if you
 only meant to change one entry, restate the full intended list.
 
 For hook-only edits, prefer `hooks_override` when the target hook type already
@@ -155,10 +155,10 @@ hooks_override = {
 }
 ```
 
-### `_delete_=True` — replace instead of merge
+### `_delete_=True` - replace instead of merge
 
-To discard an inherited dict entirely and substitute a new one — when the
-inherited value has the wrong shape or meaning — set `_delete_=True` in the child:
+To discard an inherited dict entirely and substitute a new one - when the
+inherited value has the wrong shape or meaning - set `_delete_=True` in the child:
 
 ```python
 model = dict(_delete_=True, type="panda-ar-v2m1", ar_hidden_dim=384)
@@ -176,13 +176,13 @@ Before execution, the loader substitutes file-local template strings:
 | `{{ fileBasenameNoExtension }}` | file name without extension |
 | `{{ fileExtname }}` | file extension |
 
-It also supports `{{ _base_.path.to.key }}`, replaced after the bases load — handy
+It also supports `{{ _base_.path.to.key }}`, replaced after the bases load - handy
 when a child needs a nested base value without importing the base as Python.
 
 ## Runtime defaults
 
 Most configs inherit `configs/_base_/default_runtime.py`, which defines the
-baseline runtime contract:
+baseline runtime defaults:
 
 ```{list-table}
 :header-rows: 1
@@ -250,13 +250,13 @@ consumes.
 
 Config files are regular Python modules. On load, pimm executes the file in a
 temporary module and collects every global name that does **not** start with
-`__` — which is why local variables, comprehensions, imports, arithmetic, and
+`__` - which is why local variables, comprehensions, imports, arithmetic, and
 values derived from earlier entries all work, and why a throwaway local can be
 `del`-eted so it doesn't become a config key.
 
 :::{important}
-The loader is **Python-first**. `Config._file2dict` accepts `.py`, `.json`,
-`.yaml`, and `.yml`, but JSON/YAML training-config parsing is *not* implemented —
+The loader is **Python-first**. It accepts `.py`, `.json`, `.yaml`, and `.yml`
+paths, but JSON/YAML training-config parsing is *not* implemented -
 it raises `NotImplementedError`. Use Python files for training configs. Launch
 YAML is a separate system used only by the launchers.
 :::
@@ -270,12 +270,12 @@ them as config keys.
 
 A `type` is only resolvable if pimm has imported the class that registered it.
 Register custom models/datasets/transforms/hooks by importing them from the
-relevant package `__init__.py` (e.g. `pimm/datasets/__init__.py`) — not from the
+relevant package `__init__.py` (e.g. `pimm/datasets/__init__.py`) - not from the
 config itself.
 
 ## CLI overrides
 
-You rarely run `pimm/train.py` by hand — the launchers wrap it (pass bare
+You rarely run `pimm/train.py` by hand - the launchers wrap it (pass bare
 `KEY=VALUE` tokens after `--`; see {doc}`../getting_started/quickstart`). What's
 config-specific is *how those overrides merge*. Each item is `KEY=VALUE`; dotted
 keys create or update nested entries; values parse as `int` → `float` →
@@ -287,7 +287,7 @@ keys create or update nested entries; values parse as `int` → `float` →
 --options model.backbone.order='[hilbert,hilbert-trans,z,z-trans]'
 ```
 
-Unknown keys are **added**, not rejected — a typo may instead surface later
+Unknown keys are **added**, not rejected - a typo may instead surface later
 during model/dataset/hook/optimizer construction. CLI merges use the same
 recursive dict merge as file inheritance, with two conveniences:
 
@@ -325,7 +325,7 @@ writes these under `cfg.save_path`:
 ```
 
 These are **not** rewritten on resume. Treat the saved `config.py` and
-`run_metadata.json` as the authoritative record of what a run started with — and
+`run_metadata.json` as the authoritative record of what a run started with - and
 remember resume loads the saved `config.py`, not the original under `configs/`.
 
 ## Experiment variants
@@ -347,7 +347,7 @@ Use the smallest mechanism that still leaves a clear record:
     resume behavior, chained jobs, W&B group names.
 ```
 
-The recommended pattern — inherit a baseline and override only what changes:
+The recommended pattern - inherit a baseline and override only what changes:
 
 ```python
 _base_ = ["../pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py"]
@@ -370,17 +370,9 @@ Avoid these anti-patterns:
 - Partially replacing an inherited list without restating the full intended list.
 :::
 
-Before an important run, dry-run it and read the rendered command — the best
+Before an important run, dry-run it and read the rendered command - the best
 source for the final config path, run name, resources, account, and overrides:
 
 ```bash
 pimm launch --dry-run --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
-
-## See also
-
-- {doc}`../getting_started/quickstart` — `pimm launch` / `submit` / `export` and how to pass overrides.
-- {doc}`registered models <../api/registry/models>` — model `type` strings to drop into `model.type`.
-- {doc}`../getting_started/concepts` — registries, the packed batch, the trainer contract.
-- {doc}`../hooks/index` — the hooks you wire up in the `hooks` list.
-- {doc}`../checkpoints/index` — what fine-tuning and resume consume.

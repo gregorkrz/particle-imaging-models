@@ -1,4 +1,6 @@
-# Core concepts
+# How pimm works
+
+{doc}`overview` introduces pimm; this material builds on it.
 
 This page includes a few of the more important concepts in pimm that may differ from other ML libraries or your past conventions.
 
@@ -6,9 +8,11 @@ This page includes a few of the more important concepts in pimm that may differ 
 
 This repository is set up to work with sparse data (e.g., point clouds) dictionaries.
 
-In high energy physics, events are **variable length** — one might be 100 hits or particles, the next 10,000. In machine learning, we often want to train on many events at a single iteration via stochastic gradient descent. Oftentimes this is done by **padding** individual events into a 3D tensor, so that a model can ingest and work on events in parallel. Having this 3D tensor of shape `(B, N, C)` where `B` is the batch size, `N` is your expected maximum number of data points per event (i.e., what each event is padded to), and `C` are data-level features (e.g., energy deposited), wastes quite a lot of memory, especially if the amount of data in each event varies widely.  So pimm batches data in a **packed** format: every batched quantity is 2D `(N, C)` instead of 3D `(B, N, C)`, and an `offset` tensor marks where each event ends. This essentially is the concatenation of all data into a single flat 2D tensor.  This data format is called Compressed Sparse Row (CSR). 
-
-Graph neural networks, for example, make heavy use of this data format, as they naturally work with variable length objects. One downside is that your memory usage is no longer predictable, and is a bit more spiky as it is [fragmented](https://en.wikipedia.org/wiki/Fragmentation_(computing)). This means that you can hit Out of Memory (OOM) errors halfway through a training run if your batch contains more data than normal -- so be careful! I would advise logging GPU VRAM usage over the course of training with the {py:class}`~pimm.engines.hooks.resources.ResourceUtilizationLogger` hook.
+In high energy physics, events are **variable length** - one might be 100 hits or particles, the next 10,000.
+Training on many events per iteration is often done by **padding** individual events into a 3D tensor of shape `(B, N, C)`, where `B` is the batch size, `N` is the padded maximum number of points per event, and `C` are per-point features (e.g., energy deposited).
+This wastes memory when event sizes vary widely, so pimm instead batches data in a **packed** format: every batched quantity is 2D `(N, C)`, the concatenation of all events into a single flat tensor, with an `offset` tensor marking where each event ends.
+This layout is Compressed Sparse Row (CSR), and graph neural networks make heavy use of it since they work naturally with variable length objects.
+Packed memory usage is not predictable in advance, so a batch with more data than normal can trigger Out of Memory (OOM) errors partway through a run; log GPU VRAM usage across training with the {py:class}`~pimm.engines.hooks.resources.ResourceUtilizationLogger` hook.
 
 <p align="center">
     <img alt="pointcept" class="only-light" src="https://raw.githubusercontent.com/pointcept/assets/main/pointcept/offset.png" width="480">
@@ -33,8 +37,6 @@ A collate function automatically **concatenates** tensors into this flat format,
 per-sample lengths into cumulative offsets. This packed format is quite general, and what makes the same models work across very
 different detectors. See {doc}`../datasets/data_format`.
 
-Note that some methods have fancier data formats, like the {py:class}`~pimm.models.utils.structure.Point` class, which is used in Point Transformer V3 to automatically deal with setting the correct backend formats for sparse CNN libraries.
-
 ## 2. Everything is a registry
 
 Models, datasets, transforms, hooks, losses, optimizers, schedulers, trainers,
@@ -56,7 +58,10 @@ class PointTransformerV3(PointModule):
     ...
 ```
 
-This makes these objects very customizable and modular, and makes things quite easy to extend, i.e. adding a new model(link), adding a new dataset(link), adding a new hook(link), adding a new trainer(link). An example where this is extremely helpful is in foundation model research, where you are researching both what model encoder to use (Sparse UResNet? GNN? Point Transformer V3?) and what training paradigm to try (MAE? Sonata? JEPA?). If you set up your models in a smart way, registries allow these two R&D axes to be mostly independent from one another. For example, Sonata just needs a feature extractor to give it per-point features; it doesn't care about how you give those features. E.g., the Sonata config looks something like:
+This makes these objects modular and easy to extend: see {doc}`../research_ecosystem/contributing_a_model`, {doc}`../research_ecosystem/contributing_a_dataset`, {doc}`../research_ecosystem/contributing_a_hook`, and {doc}`../research_ecosystem/contributing_a_transform`.
+Registries are helpful in foundation model research, where the model encoder (Sparse UResNet, GNN, Point Transformer V3) and the training paradigm (MAE, Sonata, JEPA) are separate axes of study.
+Registries keep these two axes mostly independent: Sonata requires only a feature extractor that produces per-point features, and how those features are produced does not matter.
+The Sonata config looks something like:
 
 ```python
 model = dict(
@@ -78,14 +83,14 @@ A class that pimm never imports doesn't get registered, so it isn't buildable fr
 
 The registries below can be found in the {doc}`API reference <../api/index>`.
 
-| Registry | Lives in | Builds (all registered types) |
-|----------|----------|--------|
-| `MODELS` | `pimm/models/builder.py` | {doc}`models & backbones <../api/registry/models>` |
-| `DATASETS` | `pimm/datasets/builder.py` | {doc}`datasets <../api/registry/datasets>` |
-| `TRANSFORMS` | `pimm/datasets/transform/common.py` | {doc}`transforms <../api/registry/transforms>` |
-| `HOOKS` | `pimm/engines/hooks/builder.py` | {doc}`training hooks <../api/registry/hooks>` |
-| `LOSSES` | `pimm/models/losses/builder.py` | {doc}`loss functions <../api/registry/losses>` |
-| `TRAINERS` | `pimm/engines/train.py` | {doc}`trainers <../api/registry/trainers>` |
+| Registry | Builds (all registered types) |
+|----------|--------|
+| `MODELS` | {doc}`models & backbones <../api/registry/models>` |
+| `DATASETS` | {doc}`datasets <../api/registry/datasets>` |
+| `TRANSFORMS` | {doc}`transforms <../api/registry/transforms>` |
+| `HOOKS` | {doc}`training hooks <../api/registry/hooks>` |
+| `LOSSES` | {doc}`loss functions <../api/registry/losses>` |
+| `TRAINERS` | {doc}`trainers <../api/registry/trainers>` |
 
 ## 3. Training configs are Python, command executions are in YAML
 
@@ -154,44 +159,31 @@ test = dict(type="...", ...)
 
 :::{tab-item} YAML
 ```yaml
-# launch/sites/nersc.yaml
-_base_: slurm.yaml
+# launch/sites/mycluster.yaml
+_base_: slurm.yaml                 # generic Slurm defaults
 
-site: nersc
+site: mycluster
 
 paths:
-  repo_root: /global/homes/y/youngsam/sw/pimm-private
-  exp_root: /global/homes/y/youngsam/data
+  repo_root: /path/to/pimm         # shared checkout jobs run from
+  exp_root: "{repo_root}/exp"      # where runs are written
 
 resources:
-  cpus_per_proc: 6
-  mem: 192G
+  nnodes: 1
+  nproc_per_node: 4                # GPUs per node
+  cpus_per_proc: 12                # CPUs per GPU
+  time: "12:00:00"
 
 slurm:
-  account: m5238_g
-  qos: regular
-  constraint: gpu
-  gpu_directive: gpus-per-node
-  image: youngsm/pimm-nersc:main
-  module: gpu,nccl-plugin
+  account: <account>
+  partition: <partition>
+  gpu_directive: gres              # `--gres=gpu:N`; some clusters need `gpus-per-node`
 
 container:
-  runtime: shifter
-  image: youngsm/pimm-nersc:main
-  module: gpu,nccl-plugin
-  unset_env:
-    - LD_LIBRARY_PATH
-    - LD_PRELOAD
-  setup:
-    - export LD_LIBRARY_PATH=/opt/hdf5/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+  runtime: none                    # or `singularity` with an `image:`
 
 env:
-  # Perlmutter compute nodes reach huggingface.co (HEAD/redirect OK) but the
-  # Xet CAS transfer endpoint (cas-bridge.xethub.hf.co) stalls -> downloads sit
-  # at 0 MB. Force the classic LFS/HTTPS path via cdn-lfs, which works in-job.
-  HF_HUB_DISABLE_XET: "1"
   NCCL_SOCKET_IFNAME: "^docker0,lo"
-  NCCL_NET_GDR_LEVEL: PHB
   HDF5_USE_FILE_LOCKING: "FALSE"
 ```
 :::
@@ -200,15 +192,15 @@ env:
 
 A run command using this config and site configuration would be:
 ```sh
-pimm submit --site nersc --train.config path/to/some_config
+pimm submit --site mycluster --train.config path/to/some_config
 ```
 
-There's also some more features, like run YAMLs, but read more in 
+There are more features, like run YAMLs; read more in {doc}`../hpc/index`.
 
 ## 4. Models being trained must output a loss
 
-Like most ML training libraries, training involves around a Trainer (link to DefaultTrainer in API), which sets up an entire run, runs the training loop (link to https://www.deeplearnphysics.org/particle-imaging-models/stable/_modules/pimm/engines/train.html#Trainer.train), including all hooks,
-and cleans up once everything is finished. For each step, our it moves the batch to the device, calls the model, and reads one key:
+Like most ML training libraries, training centers on a {doc}`Trainer <../api/registry/trainers>`, which sets up a run, runs the training loop including all hooks, and cleans up once everything is finished.
+For each step, it moves the batch to the device, calls the model, and reads one key:
 
 ```python
 for input_dict in data_loader:
@@ -234,24 +226,8 @@ keys are in `output_dict`:
 See {doc}`../research_ecosystem/using_trained_models` and {doc}`../hooks/index`.
 
 :::{note}
-Per-step metrics in the model outputs here are not automatically synchronized across GPUs. [Distributed Data Parallel (DDP)](https://docs.pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html) training (what we use to do multi-GPU, multi-machine training) all-reduces gradients from `loss` during the backward(), so training is correct, but the scalar values in the model's output dict (including loss) are each rank's local values, and the logging hooks will usually record them on the main process only. If you compute a metric in a custom hook and want the true global value, you will need to all-reduce it yourself. Some models, e.g. Sonata, already all-reduce their component/total_loss values for logging, but intentionally leave the autograd loss key local:
-
-```python
-import torch.distributed as dist
-
-def forward(self, data_dict, return_point=False):
-  ...
-  # sync component losses for logging
-  if (ws:=get_world_size()) > 1:
-      for key in list(output_dict.keys()):
-          if key == 'loss':
-              continue
-          synced_loss = output_dict[key].detach()
-          dist.all_reduce(synced_loss, op=dist.ReduceOp.SUM)
-          synced_loss.div_(ws)
-          output_dict[key] = synced_loss
-  return output_dict
-```
+In multi-GPU training, [Distributed Data Parallel (DDP)](https://docs.pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html) synchronizes gradients during `backward()`, so training is correct.
+The logged per-step scalars in the output dict (including `loss`) are each rank's local values unless a model all-reduces them itself.
 :::
 
 
@@ -259,6 +235,6 @@ def forward(self, data_dict, return_point=False):
 
 ## Next
 
-- {doc}`../configuration/index` — Python configs in depth.
-- {doc}`../datasets/index` — datasets, transforms, and the packed contract.
-- {doc}`../distributed/index` — how this scales to many GPUs and nodes.
+- {doc}`../configuration/index` - Python configs in depth.
+- {doc}`../datasets/index` - datasets, transforms, and the packed format.
+- {doc}`../distributed/index` - how this scales to many GPUs and nodes.

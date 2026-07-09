@@ -99,7 +99,10 @@ def load_state_dict_from_checkpoint(
     # Load checkpoint file
     if checkpoint_path.endswith(".safetensors"):
         if not _has_safetensors:
-            raise ImportError("safetensors package required for .safetensors files. Install with: pip install safetensors")
+            raise ImportError(
+                "safetensors is required for .safetensors files; "
+                "run `uv sync --all-extras --locked`"
+            )
         checkpoint = safetensors.torch.load_file(checkpoint_path, device=device)
     else:
         try:

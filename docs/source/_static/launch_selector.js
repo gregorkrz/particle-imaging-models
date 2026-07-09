@@ -1,4 +1,4 @@
-/* pimm — "Build your run command" interactive selector.
+/* pimm - "Build your run command" interactive selector.
    PyTorch "Start Locally"-style pills that assemble the correct
    `pimm launch` / `pimm submit` command. Vanilla JS, no dependencies. */
 
@@ -7,7 +7,7 @@
 
   // -- Widget state ---------------------------------------------------------
   var state = {
-    target: "local", // local | s3df | nersc
+    target: "local", // local | slurm
     nodes: "1",
     gpus: "1",
     jobType: "batch", // batch | interactive
@@ -25,8 +25,7 @@
       label: "Run target",
       options: [
         { value: "local", text: "Local" },
-        { value: "s3df", text: "Slurm — S3DF" },
-        { value: "nersc", text: "Slurm — NERSC" },
+        { value: "slurm", text: "Slurm cluster" },
       ],
     },
     {
@@ -69,7 +68,7 @@
   ];
 
   function isSlurm() {
-    return state.target === "s3df" || state.target === "nersc";
+    return state.target === "slurm";
   }
 
   // Which rows/options are disabled given the current state.
@@ -90,7 +89,7 @@
       parts.push("--resources.nproc-per-node " + state.gpus);
       parts.push("--resources.time " + state.walltime);
       if (state.jobType === "interactive") {
-        parts.push("--interactive --slurm.qos interactive");
+        parts.push("--interactive");
       }
       if (state.jobType === "batch" && state.chain === "4") {
         parts.push("--chain.jobs 4");

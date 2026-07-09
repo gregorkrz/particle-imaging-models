@@ -16,7 +16,7 @@ The backend is purely opt-in and degrades gracefully:
 - Set ``PIMM_DISABLE_SERIALIZE_CUDA=1`` to force the PyTorch path even when the
   extension is installed (useful for debugging or A/B benchmarking).
 
-It is built automatically by the container and conda recipes; see
+It is built automatically by the container and uv environment; see
 ``libs/serialize_cuda/README.md`` for the manual build.
 """
 

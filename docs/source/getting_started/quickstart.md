@@ -5,34 +5,37 @@ This page will walk you through a full pre-train run and subsequent fine-tuning 
 
 ## Configure environment
 
-Under construction
+Scripts load a `.env` from the repo root if present, so copy the template and
+edit it:
 
-* Docker image
-* HF token
-* wandb login
-* download/get datasets ready
+```bash
+cp example.env .env && nano .env
+```
+
+See {doc}`installation` for the full environment-variable table.
+
+Download PILArNet-M so training has data on disk:
+
+```bash
+uv run python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dataset
+```
+
+Set `PILARNET_DATA_ROOT_V2` in `.env` to the downloaded directory.
+See {doc}`../datasets/pilarnet` for the layout and revision details.
 
 ## Main command
 
 The primary entry point for local GPU(s) is `pimm launch`, and on SLURM-managed clusters `pimm submit`:
 
 ```bash
-pimm launch --train.config <config-path> [-- KEY=VALUE ...]
-pimm submit --site <site> --train.config <config-path> [-- KEY=VALUE ...]
+uv run pimm launch --train.config <config-path> [-- KEY=VALUE ...]
+uv run pimm submit --site <site> --train.config <config-path> [-- KEY=VALUE ...]
 ```
 
 `--train.config` is a path under `configs/`, with or without `.py`. Everything
 after a bare `--` separator is a training override, written as `KEY=VALUE`.
 
-```text
-pimm launch/submit  ─▶  scripts/train.sh  ─▶  torchrun  ─▶  pimm/train.py (DefaultTrainer)
-                              │
-                              ├─ snapshot code  → exp/<dataset>/<name>/code/
-                              ├─ resolve config + overrides
-                              └─ pick resume checkpoint (if --train.resume)
-```
-
-pimm has three console commands (all also reachable as `python -m pimm.cli …`):
+pimm has three console commands (all also reachable as `uv run python -m pimm.cli …`):
 
 ```{list-table}
 :header-rows: 1
@@ -52,13 +55,13 @@ pimm has three console commands (all also reachable as `python -m pimm.cli …`)
 
 ```bash
 # single GPU
-pimm launch \
+uv run pimm launch \
   --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --run.name semseg-pt-v3m2 \
   --resources.nproc-per-node 1
 
 # four GPUs on one node (global batch_size splits to 4/GPU)
-pimm launch \
+uv run pimm launch \
   --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --resources.nproc-per-node 4
 ```
@@ -73,7 +76,7 @@ Two ways, smallest mechanism first:
 
 :::{tab-item} CLI override (quick probes)
 ```bash
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
+uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
   -- epoch=50 data.train.max_len=500000 optimizer.lr=3e-5
 ```
 Bare `KEY=VALUE` tokens after `--`. Dotted keys patch nested config; values
@@ -98,26 +101,8 @@ Use a child config for anything you want to review, resume, or compare. See
 :::{warning}
 Training overrides after `--` must be bare `KEY=VALUE` tokens. Any token starting
 with `--` is rejected: `-- --options epoch=10` is **invalid** for `pimm launch` /
-`pimm submit` — write `-- epoch=10`.
+`pimm submit` - write `-- epoch=10`.
 :::
-
-## Runtime flags
-
-| Flag | Description |
-|------|-------------|
-| `--train.config` | Config path under `configs/`, with or without `.py` |
-| `--run.name` | Experiment name (default: `<config>-<timestamp>`) |
-| `--run.no-timestamp` | Write to exactly `exp/.../<name>/` (no timestamp suffix) |
-| `--resources.nproc-per-node` | Torchrun processes (GPUs) per node |
-| `--resources.nnodes` | Number of nodes |
-| `--train.weight` | Path / `hf://` URI to a checkpoint to fine-tune from |
-| `--train.resume` | Resume from the latest complete checkpoint |
-| `--train.no-code-copy` | Skip the code snapshot, run from repo source (dev mode) |
-| `--dry-run` | Render the command/script without executing |
-| `--recipe PATH` | Load a saved launch recipe (see {doc}`../hpc/index`) |
-
-The full flag surface (Slurm, recipes, chaining, output) is in the
-[command reference](#command-reference) below.
 
 ## What a run produces
 
@@ -145,7 +130,7 @@ If a run stops, you can continue it exactly (with RNG, dataloader position, step
 optimizer state all restored, even mid-epoch):
 
 ```bash
-pimm launch \
+uv run pimm launch \
   --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --run.name semseg-pt-v3m2 \
   --train.resume                # <-- new!
@@ -160,7 +145,7 @@ complete checkpoint (`last`, `last.prev`, `model_last.pth`). See
 Rank 0 writes either Weights & Biases or TensorBoard:
 
 ```bash
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
+uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
   --run.name test \
   --run.wandb-name test-display \
   --run.wandb-project Pretraining-Sonata-PILArNet-M
@@ -174,7 +159,7 @@ instead. See {doc}`../hooks/logging`.
 Evaluate the run's **snapshot** code on the held-out split:
 
 ```bash
-sh scripts/test.sh -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
+uv run sh scripts/test.sh -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   -n semseg-pt-v3m2 -w model_best
 ```
 
@@ -183,7 +168,7 @@ sh scripts/test.sh -c panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
 Turn a checkpoint into a portable artifact, then load it in Python:
 
 ```bash
-pimm export --run-dir exp/panda/semseg/semseg-pt-v3m2 last ./artifacts/my-model
+uv run pimm export --run-dir exp/panda/semseg/semseg-pt-v3m2 last ./artifacts/my-model
 ```
 
 ```python
@@ -198,7 +183,20 @@ See {doc}`../evaluation/index`, {doc}`../checkpoints/exporting`, and
 
 ## Scale by submitting to a cluster
 
-Under construction. 
+The same run becomes a managed Slurm job by swapping `pimm launch` for `pimm
+submit --site <site>`:
+
+```bash
+uv run pimm submit --site mycluster \
+  --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
+  --resources.nnodes 1 --resources.nproc-per-node 4 --resources.time 02:00:00
+```
+
+A site profile is a YAML file under `launch/sites/` describing your cluster - see {doc}`../hpc/sites`.
+
+See {doc}`../hpc/index` for sites, interactive vs batch, recipes, and requeue
+chaining, and {doc}`../distributed/index` for how batch size and workers split
+across GPUs and nodes.
 
 ## Command reference
 
@@ -210,15 +208,8 @@ Under construction.
 3. an optional run recipe passed with `--recipe PATH`
 4. CLI overrides and post-`--` training overrides
 
-Python files under `configs/` remain the source of truth for model / dataset /
-trainer behavior; launch YAML describes *execution* — site paths, Slurm
-resources, container runtime, checkpoint weights, resume, run naming, env vars,
-and explicit training overrides.
-
-CLI flags are generated from the dataclasses in `pimm/launch/schema.py`, so they
-are nested and dotted (`--train.config`, `--resources.nproc-per-node`,
-`--run.name`, `--slurm.account`). There are no flat `--config`, `--option`, or
-`--set` flags.
+CLI flags are nested and dotted (`--train.config`, `--resources.nproc-per-node`, `--run.name`, `--slurm.account`).
+There are no flat `--config`, `--option`, or `--set` flags.
 :::
 
 :::{dropdown} Full flag table
@@ -253,6 +244,9 @@ are nested and dotted (`--train.config`, `--resources.nproc-per-node`,
 * - run name
   - `--run.name`
   - default: auto-generated `<config>-<timestamp>`
+* - fixed run dir (no timestamp)
+  - `--run.no-timestamp`
+  - write to exactly `exp/.../<name>/`
 * - W&B display name / project
   - `--run.wandb-name` / `--run.wandb-project`
   -
@@ -289,15 +283,11 @@ are equivalent:
 --train.config configs/panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py
 --train.config /abs/path/configs/panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py
 ```
-
-After normalization `scripts/train.sh` splits the path into config group
-(`panda/pretrain`), config name, config file, and experiment directory
-(`exp/panda/pretrain/<name>/`).
 :::
 
 :::{dropdown} `pimm export` flags
 ```bash
-pimm export --run-dir exp/panda/semseg/my_run last ./artifacts/my-model
+uv run pimm export --run-dir exp/panda/semseg/my_run last ./artifacts/my-model
 ```
 
 The two positional arguments are the checkpoint and the output directory. With
@@ -337,15 +327,13 @@ See {doc}`../checkpoints/index` for the artifact layout and the Hugging Face
 workflow.
 :::
 
-:::{dropdown} Direct scripts — `scripts/train.sh` / `scripts/test.sh`
+:::{dropdown} Direct scripts - `scripts/train.sh` / `scripts/test.sh`
 The launchers ultimately call these wrappers; use them directly for simple local
 development or exact control over an existing shell workflow.
 
 ```bash
-sh scripts/train.sh -c <config-path> [options] [-- --options key=value ...]
+uv run sh scripts/train.sh -c <config-path> [options] [-- --options key=value ...]
 ```
-
-The getopts string is `"p:c:n:w:g:m:r:a:Ch"` (no `--list`; browse `configs/`):
 
 ```{list-table}
 :header-rows: 1
@@ -381,7 +369,7 @@ unlike the launchers' bare `-- key=value`.
 Testing mirrors it:
 
 ```bash
-sh scripts/test.sh -c <config-path> -n <experiment-name> [-w model_best]
+uv run sh scripts/test.sh -c <config-path> -n <experiment-name> [-w model_best]
 ```
 
 `test.sh` runs `pimm/test.py` with `PYTHONPATH` pointed at the experiment's saved
@@ -392,7 +380,7 @@ wrapped in `torchrun`.
 
 ## Where to go next
 
-- {doc}`concepts` — the ideas the rest of the docs assume (packed tensors, registries, configs).
-- {doc}`../configuration/index` — write and inherit Python configs in depth.
-- {doc}`../tutorials/byo_dataset_semseg` — bring your own data and train PTv3.
-- {doc}`../hpc/index` — move from a node to a managed Slurm cluster.
+- {doc}`concepts` - the ideas the rest of the docs assume (packed tensors, registries, configs).
+- {doc}`../configuration/index` - write and inherit Python configs in depth.
+- {doc}`../tutorials/byo_dataset_semseg` - bring your own data and train PTv3.
+- {doc}`../hpc/index` - move from a node to a managed Slurm cluster.

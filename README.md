@@ -43,10 +43,9 @@ We are looking at including the following models/modalities in the future:
 
 ## Quick Start
 
-All three paths below share one source of truth for dependencies:
-`.github/docker/common/versions.sh` (pins) + `.github/docker/requirements/*` + the
-`.github/docker/common/install_*.sh` scripts. The image and the conda env therefore
-resolve to the same torch/CUDA/extension build.
+Local installs and container images resolve from `pyproject.toml` and the
+committed `uv.lock`.
+Both paths install the same Python, PyTorch, CUDA wheels, and local extensions.
 
 ```bash
 git clone https://github.com/deeplearnphysics/particle-imaging-models.git
@@ -68,26 +67,29 @@ path so the `pimm` command imports your code, not the baked-in copy.
 docker build -f .github/docker/Dockerfile -t pimm:local .   # or Dockerfile.nersc on Perlmutter
 ```
 
-#### Option C — local conda env (no container)
+#### Option C - local uv environment
 
-`install.sh` creates a conda env using the same scripts the image build uses:
+The local build requires Linux x86_64, CUDA 12.4 with `nvcc`, GCC/G++ 9 through
+12, and sparsehash headers.
+`install.sh` validates those system dependencies and creates `.venv` from the
+lockfile:
 
 ```bash
-./install.sh                 # GPU env, builds flash-attn (matches the image)
-./install.sh --no-flash      # skip flash-attn (slow build; set enable_flash=False in configs)
-./install.sh --cpu           # CPU-only: skip CUDA wheels/extensions
-conda activate pimm-torch2.5.0-cu12.4
+./install.sh                    # full GPU environment
+./install.sh --no-flash         # omit FlashAttention
+./install.sh --launcher-only    # pimm launch/submit without training packages
+uv run pimm launch --help
 ```
 
-It provisions the CUDA toolchain (nvcc + compilers) via conda, then installs
-torch, the python deps, the PyG/spconv wheels, the local CUDA extensions, and
-`pimm -e .`. Override pins (e.g. `TORCH_CUDA_ARCH_LIST` for your GPUs) by
-exporting them before running, or edit `.github/docker/common/versions.sh`.
+The default uses an official prebuilt FlashAttention wheel and compiles the six
+repository extensions only for the visible GPU architectures.
+uv caches those builds, so another locked sync reuses them when the source and
+toolchain are unchanged.
 
 #### Smoke test
 
 ```bash
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
+uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
   -- epoch=1 data.train.max_len=32 data.val.max_len=16 batch_size=4 num_worker=0 use_wandb=False
 ```
 
@@ -198,11 +200,11 @@ pimm launch \
 Slurm submission uses [submitit](https://github.com/facebookincubator/submitit). See `launch/README.md` for the YAML layer details and
 override syntax.
 
-Because `pimm` is a console-script entry point, every login/submit host where
-you type `pimm launch` or `pimm submit` needs the checkout installed in the
-active environment with `pip install -e .`. Containerized jobs additionally bind
-`paths.repo_root` over `/opt/pimm/src` by default so the in-image editable install
-also resolves to the same checkout.
+Every login or submit host where you invoke `pimm launch` or `pimm submit` needs
+the launcher dependencies.
+Run `./install.sh --launcher-only`, then use `uv run pimm submit ...`.
+Containerized jobs bind `paths.repo_root` over `/opt/pimm/src` by default, while
+the image environment remains at `/opt/pimm/.venv`.
 
 ## Exporting models
 
@@ -255,7 +257,7 @@ Example configs can be found in:
 Download the 168GB dataset from Hugging Face:
 
 ```bash
-python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dir
+uv run python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dir
 ```
 
 Data saves to `~/.cache/pimm/pilarnet/v2` if `--output-dir` is not provided. After downloading the dataset, run `cp example.env .env` and set `PILARNET_DATA_ROOT_V2`. This will allow the dataloader to automatically find the data.

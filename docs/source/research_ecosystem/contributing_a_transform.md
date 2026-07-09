@@ -1,27 +1,26 @@
 # Contributing a transform
 
-A transform is one step in the `Compose` pipeline that turns the **flat numpy
+A transform is one step in the {py:class}`~pimm.datasets.transform.base.Compose` pipeline that turns the **flat numpy
 dict** a dataset emits into the **packed tensor batch** a model consumes. You
 write a new one whenever the built-in catalog ({doc}`../datasets/transforms`)
 can't express the step you need.
 
-There are three broad reasons to reach for a custom transform — they look
+There are three broad reasons to reach for a custom transform - they look
 similar (a registered callable on a `data_dict`) but sit at very different points
 in the pipeline:
 
 ```text
-preprocessing  ──▶  get raw data into the contract: relabel, remap, derive a key
+preprocessing  ──▶  get raw data into the format: relabel, remap, derive a key
 augmentation   ──▶  perturb a sample for regularization: jitter, drop, rotate
 method machinery ──▶  build the inputs a training method needs: multi-view, masks
 ```
 
 :::{seealso}
 Read {doc}`../datasets/transforms` first for the pipeline, `index_valid_keys`,
-the final `Collect`, and the full catalog of built-ins. This page is about
-*authoring* a new step; that one is about *using* the existing ones.
+the final `Collect`, and the full catalog of built-ins.
 :::
 
-## The contract
+## Requirements
 
 A transform is a class registered in the `TRANSFORMS` registry whose `__call__`
 takes the sample `data_dict` and returns it (usually the **same** dict, mutated
@@ -50,15 +49,14 @@ relies on:
   `coord`; labels conventionally end up as `segment` / `instance`.
 - **Return the dict.** Most transforms mutate and `return data_dict`. A few return
   a *different* object (e.g. `GridSample(mode="test")` returns a list of fragment
-  dicts) — the runner just forwards whatever you return to the next step.
+  dicts) - the runner just forwards whatever you return to the next step.
 - **Keep it JSON-like in config.** Pass `[dict(type=...), ...]`, never a
   pre-built `Compose`.
 
-## 1. Preprocessing — get raw data into the contract
+## 1. Preprocessing - get raw data into the required format
 
-The first job is often massaging raw arrays into the keys/format the rest of the
-pipeline expects: remapping a label scheme, deriving a key, fixing dtypes. These
-sit **early**, before augmentation and subsampling. Example — collapse a raw PDG
+The first job is often converting raw arrays into the keys/format the rest of the pipeline requires: remapping a label scheme, deriving a key, fixing dtypes. These
+sit **early**, before augmentation and subsampling. Example - collapse a raw PDG
 code array into contiguous class ids:
 
 ```python
@@ -89,13 +87,13 @@ dict(type="MyPDGToClass", mapping={22: 0, 11: 1, 13: 2, 211: 3, 2212: 4}),
 :::{important}
 If your transform **adds a new point-aligned array** (length `N`, must follow
 the same points as `coord` through subsampling), register it in
-`index_valid_keys` *before* the first subsampling transform — otherwise it keeps
+`index_valid_keys` *before* the first subsampling transform - otherwise it keeps
 its original length and silently desyncs from `coord`. Add it with the `Update`
 transform, or have your transform append to `data_dict["index_valid_keys"]`. See
 {doc}`../datasets/transforms`.
 :::
 
-## 2. Augmentation — perturb a sample
+## 2. Augmentation - perturb a sample
 
 Augmentations act on `coord` (and other point arrays) for regularization. Keep
 randomness inside `__call__` so every sample is drawn independently, and gate it
@@ -122,12 +120,12 @@ class RandomEnergyDropout(object):
         return data_dict
 ```
 
-Augmentations belong in the **train** pipeline only — the val/test pipeline must
+Augmentations belong in the **train** pipeline only - the val/test pipeline must
 stay deterministic so evaluation is reproducible (this is exactly why inference
 reuses the *val* transform; see
 [reproducing the pipeline at inference](../datasets/transforms.md#reproducing-the-pipeline-at-inference)).
 
-## 3. Method machinery — build what a training method needs
+## 3. Method machinery - build what a training method needs
 
 Some training methods need more than per-point edits: they restructure the sample
 itself. Multi-view self-distillation (Sonata/DINO-style) needs **several
@@ -137,7 +135,7 @@ a **sub-pipeline** and write their outputs under prefixed keys the model and
 collate function then consume.
 
 {py:class}`~pimm.datasets.transform.multiview.ContrastiveViewsGenerator` is the
-minimal pattern — copy the source keys into two sub-dicts, run the same
+minimal pattern - copy the source keys into two sub-dicts, run the same
 `Compose` independently on each, and write the results back under `view1_*` /
 `view2_*`:
 
@@ -218,10 +216,3 @@ assert (out["energy"] == 0.0).any()
 4. Augmentations go in the **train** pipeline only; val/test stays deterministic.
 5. Import the module in `pimm/datasets/transform/__init__.py`.
 6. Verify on a synthetic numpy `data_dict`.
-
-## See also
-
-- {doc}`../datasets/transforms` — the pipeline, the catalog, `Collect`, and `index_valid_keys`.
-- {doc}`contributing_a_dataset` — the reader/dataset that feeds your transform.
-- {doc}`../datasets/data_format` — what the final `Collect` + collation produce.
-- {doc}`../getting_started/concepts` — registries and registration.

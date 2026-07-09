@@ -1,7 +1,7 @@
 # Diagnostics & runtime hooks
 
-Diagnostic hooks watch the *health* of training — gradients, feature collapse,
-prototype usage, hardware utilization — and the **mutating** hooks change
+Diagnostic hooks watch the *health* of training - gradients, feature collapse,
+prototype usage, hardware utilization - and the **mutating** hooks change
 runtime behavior such as weight decay, parameter dtype, and attention-mask
 annealing. They live in `pimm/engines/hooks/diagnostics.py`,
 `resources.py`, `optimizer.py`, and `profiling.py`.
@@ -13,25 +13,25 @@ These split into two groups: **read-only monitors** that only log, and
 
 ### GradientNormLogger
 
-Logs the global (and optionally per-layer) gradient norm — the first thing to
+Logs the global (and optionally per-layer) gradient norm - the first thing to
 check when a loss diverges or plateaus.
 
 `GradientNormLogger(norm_type=2.0, log_per_layer=False, log_frequency=1, prefix="grad_norm")`
 
 - Computes the `norm_type`-norm of gradients after backward.
 - `log_per_layer=True` breaks the norm down by parameter group/layer under
-  `prefix` — useful for spotting a single layer that explodes or dies.
+  `prefix` - useful for spotting a single layer that explodes or dies.
 
 :::{tip}
 A gradient norm that spikes right at the end of an SSL warmup usually means the
-*objective* got too hard, not that the LR is wrong — lower the mask ratio/size
+*objective* got too hard, not that the LR is wrong - lower the mask ratio/size
 base or lengthen its warmup before touching the LR.
 :::
 
 ### PrototypeUsageLogger
 
 For prototype-based SSL (Sonata-style heads), logs how the prototype assignments
-are distributed — the canonical detector for **prototype collapse**, where the
+are distributed - the canonical detector for **prototype collapse**, where the
 model routes everything to a handful of prototypes.
 
 `PrototypeUsageLogger(log_frequency=10, prefix="prototypes")`
@@ -42,7 +42,7 @@ model routes everything to a handful of prototypes.
 
 ### FeatureStdMonitor
 
-Tracks the standard deviation of student and teacher features — a near-zero std
+Tracks the standard deviation of student and teacher features - a near-zero std
 is the textbook signature of representation collapse in self-distillation.
 
 `FeatureStdMonitor(log_frequency=10, prefix="feature_std", monitor_student=True, monitor_teacher=True, track_channels=False)`
@@ -64,7 +64,7 @@ Logs CPU/RAM and GPU memory so you can right-size jobs and catch leaks.
 
 ### ParameterCounter
 
-Logs a model-size and frozen/trainable parameter summary once at startup — the
+Logs a model-size and frozen/trainable parameter summary once at startup - the
 fastest way to confirm a freeze/LoRA config froze what you intended.
 
 `ParameterCounter(show_details=True, show_gradients=True, sort_by_params=True, min_params=0)`
@@ -86,7 +86,7 @@ each other.
 
 Rewrites the optimizer's parameter groups **before training** so that biases,
 norm/gamma parameters, learnable tokens, and any 1-D parameter are excluded from
-weight decay — the standard transformer recipe.
+weight decay - the standard transformer recipe.
 
 `WeightDecayExclusion(exclude_bias_from_wd=True, exclude_norm_from_wd=True, exclude_gamma_from_wd=True, exclude_token_from_wd=True, exclude_ndim_1_from_wd=True)`
 
@@ -115,7 +115,7 @@ defined. The scheduler's total length comes from `cfg.scheduler.total_steps`.
 ### DtypeOverrider
 
 Forces selected modules (and optionally their parameters) to a specific compute
-dtype — e.g. keeping a numerically sensitive decoder in `float32` while the rest
+dtype - e.g. keeping a numerically sensitive decoder in `float32` while the rest
 of the model runs in lower precision.
 
 `DtypeOverrider(patterns=None, class_patterns=None, dtype="float32", methods_to_override=None, override_parameters=False, verbose=False, check_interval=10)`
@@ -140,7 +140,7 @@ relax a structured attention mask over training.
 `AttentionMaskAnnealingHook(log_frequency=100, log_per_layer=False, prefix="anneal")`
 
 - Calls `model.update_anneal_step()` and logs the annealing factor(s) under
-  `prefix`, **only when the model exposes that interface** — otherwise it is a
+  `prefix`, **only when the model exposes that interface** - otherwise it is a
   no-op.
 
 ### GarbageHandler
@@ -151,18 +151,18 @@ Operational memory hook in `resources.py`.
 
 - `disable_auto=True` turns off Python's automatic GC and collects manually
   every `interval` steps (predictable pauses instead of random GC stalls).
-- `empty_cache=True` also empties the CUDA cache on that cadence.
+- `empty_cache=True` also empties the CUDA cache at the same frequency.
 
 ### RuntimeProfiler
 
-Wraps a few steps in `torch.profiler` to produce a trace and a top-ops table —
+Wraps a few steps in `torch.profiler` to produce a trace and a top-ops table -
 for one-off performance investigations, not steady-state runs.
 
 `RuntimeProfiler(forward=True, backward=True, interrupt=False, warm_up=2, sort_by="cuda_time_total", row_limit=30, memory=True)`
 
 - Profiles forward and/or backward after `warm_up` steps; writes traces under
   `cfg.save_path/logdir/`; `memory=True` records a CUDA memory history.
-- `interrupt=True` stops the run after profiling — use it to grab a trace
+- `interrupt=True` stops the run after profiling - use it to grab a trace
   without paying for a full job.
 
 :::{warning}
@@ -184,10 +184,10 @@ a short diagnostic run and remove it from `cfg.hooks` for production training.
   - loss diverges/plateaus; suspect exploding or dead gradients
 * - `PrototypeUsageLogger`
   - monitor
-  - prototype SSL — watch for assignment collapse
+  - prototype SSL - watch for assignment collapse
 * - `FeatureStdMonitor`
   - monitor
-  - self-distillation — watch for feature-std collapse
+  - self-distillation - watch for feature-std collapse
 * - `ResourceUtilizationLogger`
   - monitor
   - right-sizing jobs, hunting CPU/GPU memory leaks
@@ -216,7 +216,5 @@ a short diagnostic run and remove it from `cfg.hooks` for production training.
 
 ## Next
 
-- {doc}`logging` — the everyday console / scalar / TensorBoard hooks.
-- {doc}`../research_ecosystem/contributing_a_hook` — build your own monitor with forward hooks and a clean
+- {doc}`../research_ecosystem/contributing_a_hook` - build your own monitor with forward hooks and a clean
   `after_train()` teardown.
-- {doc}`../checkpoints/saving_and_loading` — savers, and why evaluators come before them.

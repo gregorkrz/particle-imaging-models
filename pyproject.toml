@@ -5,17 +5,135 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pimm"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.11"
 dependencies = [
     "PyYAML",
     "submitit",
     "tyro",
     "addict",
     "yapf",
-] # NOTE: just for CLI job sumbmission. you need either environment.yml or the supplied dockerfile to do any training
+]
+
+[project.optional-dependencies]
+train = [
+    "cmake; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "h5py; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "tensorboardx; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "wandb; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "einops; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "termcolor; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "matplotlib; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "scikit-learn; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "nvidia-ml-py; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "rich; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pandas; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "huggingface-hub; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "safetensors; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "timm; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "regex; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch==2.5.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torchvision==0.20.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torchdata; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "ninja; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch-geometric; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch-scatter; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch-sparse; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch-cluster; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "spconv-cu124; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pointrope; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pointops; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pointgroup-ops; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "cnms; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pytorch3d-ops; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "serialize-cuda; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+flash-attn = [
+    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3%2Bcu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "jupyterlab",
+    "pytest",
+]
+nersc = [
+    "cython",
+    "mpi4py",
+]
+docs = [
+    "linkify-it-py>=2.0",
+    "myst-parser>=2.0",
+    "pydata-sphinx-theme>=0.15",
+    "sphinx-copybutton>=0.5",
+    "sphinx-design>=0.5",
+    "sphinx-sitemap>=2.5",
+    "sphinx-togglebutton>=0.3",
+    "sphinx-book-theme>=1.1",
+    "sphinx>=7.2",
+]
 
 [project.scripts]
 pimm = "pimm.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["pimm*"]
+
+[tool.uv]
+required-version = ">=0.11.1"
+default-groups = []
+concurrent-builds = 1
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+torch-scatter = { index = "pyg-cu124" }
+torch-sparse = { index = "pyg-cu124" }
+torch-cluster = { index = "pyg-cu124" }
+pointrope = { path = "libs/pointrope" }
+pointops = { path = "libs/pointops" }
+pointgroup-ops = { path = "libs/pointgroup_ops" }
+cnms = { path = "libs/cnms" }
+pytorch3d-ops = { path = "libs/pytorch3d_ops" }
+serialize-cuda = { path = "libs/serialize_cuda" }
+
+[tool.uv.extra-build-dependencies]
+pointrope = [
+    { requirement = "torch", match-runtime = true },
+    "ninja",
+]
+pointops = [
+    { requirement = "torch", match-runtime = true },
+    "ninja",
+]
+pointgroup-ops = [
+    { requirement = "torch", match-runtime = true },
+    "ninja",
+]
+cnms = [
+    { requirement = "torch", match-runtime = true },
+    "ninja",
+]
+pytorch3d-ops = [
+    { requirement = "torch", match-runtime = true },
+    "ninja",
+]
+serialize-cuda = [
+    { requirement = "torch", match-runtime = true },
+    "ninja",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu124"
+url = "https://data.pyg.org/whl/torch-2.5.0+cu124.html"
+format = "flat"
+explicit = true

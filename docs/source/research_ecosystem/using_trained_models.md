@@ -1,13 +1,13 @@
-# Sharing & using trained models
+# Using & fine-tuning models
 
 Once a model is trained and {doc}`exported <../checkpoints/exporting>`, you load it
-for inference or fine-tuning with **one function**: {py:func}`~pimm.from_pretrained`. This
-page covers loading from every source, reproducing the exact input the model
-expects, and fine-tuning from a checkpoint.
+for inference or fine-tuning with **one function**: {py:func}`~pimm.from_pretrained`.
 
-- **Load a model** — local dir, Hub repo, `hf://` URI, or raw checkpoint (see below).
-- [Feed it the right data](../datasets/transforms.md#reproducing-the-pipeline-at-inference) — reproduce the exact transform + packed-batch format.
-- {doc}`Contributing a model <contributing_a_model>` — register a new architecture on the pimm substrate.
+To publish your own trained weights, see {doc}`publishing_a_model`.
+
+- **Load a model** - local dir, Hub repo, `hf://` URI, or raw checkpoint (see below).
+- [Feed it the right data](../datasets/transforms.md#reproducing-the-pipeline-at-inference) - reproduce the exact transform + packed-batch format.
+- {doc}`Contributing a model <contributing_a_model>` - register a new architecture on the pimm substrate.
 
 :::{seealso}
 **Sharing** is the other half of this loop and lives in the Checkpoints section:
@@ -21,7 +21,7 @@ assumes you already have an export or checkpoint in hand.
 
 The DeepLearnPhysics org publishes ready-to-load checkpoints on the Hugging Face
 Hub as **consolidated exports** (`model.safetensors` + `config.json`), so the
-architecture travels with the weights — {py:func}`~pimm.from_pretrained` rebuilds
+architecture travels with the weights - {py:func}`~pimm.from_pretrained` rebuilds
 the model with no config needed.
 
 ```{list-table}
@@ -32,19 +32,19 @@ the model with no config needed.
   - Task
   - `model.type`
 * - [`deeplearnphysics/panda-base`](https://huggingface.co/deeplearnphysics/panda-base)
-  - Pretrained PT-v3m2 encoder — fine-tune downstream tasks from this
+  - Pretrained PT-v3m2 encoder - fine-tune downstream tasks from this
   - `PT-v3m2`
 * - [`deeplearnphysics/panda-semantic`](https://huggingface.co/deeplearnphysics/panda-semantic)
-  - Semantic segmentation — 5 classes (shower, track, michel, delta, led)
+  - Semantic segmentation - 5 classes (shower, track, michel, delta, led)
   - `DefaultSegmentorV2`
 * - [`deeplearnphysics/panda-particle`](https://huggingface.co/deeplearnphysics/panda-particle)
-  - Panoptic **particle ID** — 6 classes (photon, electron, muon, pion, proton, led)
+  - Panoptic **particle ID** - 6 classes (photon, electron, muon, pion, proton, led)
   - `detector-v4`
 * - [`deeplearnphysics/panda-interaction`](https://huggingface.co/deeplearnphysics/panda-interaction)
-  - Panoptic **interaction / vertex** grouping — 2 classes
+  - Panoptic **interaction / vertex** grouping - 2 classes
   - `detector-v4`
 * - [`deeplearnphysics/polar-mae-base`](https://huggingface.co/deeplearnphysics/polar-mae-base)
-  - Pretrained PoLAr-MAE (ViT) encoder — fine-tune downstream tasks from this
+  - Pretrained PoLAr-MAE (ViT) encoder - fine-tune downstream tasks from this
   - `PoLAr-MAE`
 * - [`deeplearnphysics/polar-mae-semantic`](https://huggingface.co/deeplearnphysics/polar-mae-semantic)
   - Semantic segmentation (4 classes) on a PoLAr-MAE encoder
@@ -60,7 +60,7 @@ import pimm
 model = pimm.from_pretrained("deeplearnphysics/panda-semantic", device="cuda")
 ```
 
-The `*-base` encoders are the starting point for fine-tuning — copy a config, load
+The `*-base` encoders are the starting point for fine-tuning - copy a config, load
 the encoder via a `CheckpointLoader` remap, and train (see
 {doc}`../tutorials/byo_dataset_semseg` and {doc}`../tutorials/panda_detector`).
 
@@ -68,7 +68,7 @@ the encoder via a `CheckpointLoader` remap, and train (see
 A bare `hf://<repo>` resolves to the repo's `model.safetensors`; the explicit form
 is `hf://<repo>/<file>`. A fine-tune config's `CheckpointLoader` rewrites a
 checkpoint's keys onto the model's `backbone.*`, so the remap rule must match the
-checkpoint's key layout — confirm the load reports no missing backbone keys.
+checkpoint's key layout - confirm the load reports no missing backbone keys.
 :::
 
 ## Load with `from_pretrained`
@@ -85,15 +85,14 @@ The argument may be a local exported directory, a Hugging Face Hub repo id, an
 `hf://` URI (same scheme as a training `weight=`), or a local checkpoint file.
 The returned model is in **eval mode**.
 
-For an exported directory or repo, `from_pretrained` probes for the weights
-file, reads the model config from `config.json` (`["model"]`), imports
-`pimm.models`, builds the architecture, loads the state dict, and returns the
-model. Config precedence is: explicit `model_config` > the export's
+For an exported directory or repo, `from_pretrained` rebuilds the architecture
+from the export's config and loads the weights.
+Config precedence is: explicit `model_config` > the export's
 `config.json` > `config_path` / run dir.
 
 :::{tip}
 **Config drift is tolerated.** Constructor kwargs that the current code no longer
-accepts are dropped (with a warning) and construction is retried — so older
+accepts are dropped (with a warning) and construction is retried - so older
 exports keep loading for free as the model code evolves.
 :::
 
@@ -125,7 +124,7 @@ model = pimm.from_pretrained("exports/my-model", num_classes=7)
 ## Running inference
 
 Build an input the way the dataloader would (see [reproducing the pipeline at
-inference](../datasets/transforms.md#reproducing-the-pipeline-at-inference) — this is
+inference](../datasets/transforms.md#reproducing-the-pipeline-at-inference) - this is
 the part people get wrong), move it to the device, and call the model. There is
 no `make_packed_batch` helper: reproduce the model's **val** transform with
 {py:class}`~pimm.datasets.transform.base.Compose` and collate the result with
@@ -184,35 +183,37 @@ The output-key conventions (the same ones evaluators consume):
 ```
 
 :::{note}
-Some models expose extra methods — `predict`, `encode`, `forward_features`,
-`postprocess`, `update_anneal_step` — duck-typed by specific scripts. These are
-not a global contract; check the model family you're loading.
+Some models expose extra methods - `predict`, `encode`, `forward_features`,
+`postprocess`, `update_anneal_step` - duck-typed by specific scripts. These are
+not a global rule; check the model family you're loading.
 :::
 
 ## Fine-tune from a checkpoint
 
 To start a *new training run* from pretrained weights, you don't use
-`from_pretrained` — you point the training config's `weight=` at the checkpoint
+`from_pretrained` - you point the training config's `weight=` at the checkpoint
 (no `--train.resume`, so only weights load):
 
 ```bash
-pimm submit --site s3df \
+pimm submit --site mycluster \
   --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft \
   --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
 
 :::{note}
 `hf://<your-org>/sonata-pilarnet-L/model_best.pth` is a placeholder for **your**
-Sonata SSL checkpoint (push one with the {doc}`../checkpoints/huggingface` hook) —
+Sonata SSL checkpoint (push one with the {doc}`../checkpoints/huggingface` hook) -
 its `student.backbone.*` keys are what the fine-tune configs' `CheckpointLoader`
-remap expects. Published task checkpoints for *inference* (loaded with
+remap requires. Published task checkpoints for *inference* (loaded with
 `from_pretrained`) are in [Published checkpoints](#published-checkpoints) above.
 :::
 
 When the checkpoint's keys don't line up with the fine-tune model, remap them
-with the {py:class}`~pimm.engines.hooks.checkpoint.CheckpointLoader` hook (`keywords` → `replacement`). Full mechanics —
-including the "a remap matching zero params raises" guard — are in
+with the {py:class}`~pimm.engines.hooks.checkpoint.CheckpointLoader` hook (`keywords` → `replacement`). Full mechanics -
+including the "a remap matching zero params raises" guard - are in
 {doc}`../checkpoints/saving_and_loading`.
+
+For a parameter-efficient alternative that trains only injected LoRA weights with the backbone frozen, see {doc}`../tutorials/panda_detector_peft`.
 
 ### Partial / programmatic loading
 
@@ -221,16 +222,9 @@ to remap keys by hand, use the lower-level {py:func}`~pimm.export.load_pretraine
 helper and the `pimm.export` state-dict utilities. The full set, with examples,
 is in {doc}`../checkpoints/saving_and_loading`.
 
-## The forward/loss contract (for reference)
+## Forward and loss requirements (for reference)
 
-If you're loading a model to keep training it, remember the trainer contract: the
+If you're loading a model to keep training it, remember what the trainer requires: the
 outer model's `forward(input_dict)` must return a dict with a scalar `loss`
 during training. Internal modules/backbones can return `Point`, tensors, or
 tuples. See {doc}`../getting_started/concepts`.
-
-## Next
-
-- {doc}`../datasets/transforms` — build the exact input a model expects (and the full transform reference).
-- {doc}`../checkpoints/exporting` — produce the export you're loading.
-- {doc}`All registered models <../api/registry/models>` — every model `type` and its autodoc.
-- {doc}`contributing_a_model` — author a new architecture instead of loading one.

@@ -18,7 +18,7 @@ container:
     - /fs
     - /sdf/scratch
     - /lscratch
-  interpreter: /opt/conda/bin/python
+  interpreter: /opt/pimm/.venv/bin/python
 
 env:
   NCCL_SOCKET_IFNAME: "^docker0,lo"
