@@ -28,6 +28,10 @@ jobs:
   prepare:
     if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
     runs-on: ubuntu-latest
+    # draft releases are only visible to tokens with write access, and this
+    # job must find the curated draft before anything is tagged or published
+    permissions:
+      contents: write
     outputs:
       release: ${{ steps.draft.outputs.release }}
       sha: ${{ steps.version.outputs.sha }}
