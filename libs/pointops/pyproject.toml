@@ -4,19 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pointops"
-version = "1.0.0"
+version = "1.0.0+cu124torch2.5"
 dependencies = ["numpy", "torch"]
 
 [tool.uv]
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "setup.py" },
-    { file = "**/*.py" },
-    { file = "**/*.cpp" },
-    { file = "**/*.cu" },
-    { file = "**/*.cuh" },
-    { file = "**/*.h" },
-    { file = "**/*.hpp" },
+    { file = "__init__.py" },
+    { file = "functions/**/*.py" },
+    { file = "src/**/*.cpp" },
+    { file = "src/**/*.cu" },
+    { file = "src/**/*.cuh" },
+    { file = "src/**/*.h" },
+    { file = "src/**/*.hpp" },
     { env = "TORCH_CUDA_ARCH_LIST" },
     { env = "CUDA_HOME" },
     { env = "CC" },

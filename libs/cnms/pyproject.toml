@@ -4,19 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cnms"
-version = "2.0.0"
+version = "2.0.0+cu124torch2.5"
 dependencies = ["torch"]
 
 [tool.uv]
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "setup.py" },
-    { file = "**/*.py" },
-    { file = "**/*.cpp" },
-    { file = "**/*.cu" },
-    { file = "**/*.cuh" },
-    { file = "**/*.h" },
-    { file = "**/*.hpp" },
+    { file = "cnms/**/*.py" },
+    { file = "csrc/**/*.cpp" },
+    { file = "csrc/**/*.cu" },
+    { file = "csrc/**/*.cuh" },
+    { file = "csrc/**/*.h" },
+    { file = "csrc/**/*.hpp" },
     { env = "TORCH_CUDA_ARCH_LIST" },
     { env = "CUDA_HOME" },
     { env = "CC" },

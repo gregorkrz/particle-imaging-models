@@ -335,7 +335,7 @@ wheels = [
 
 [[package]]
 name = "cnms"
-version = "2.0.0"
+version = "2.0.0+cu124torch2.5"
 source = { directory = "libs/cnms" }
 dependencies = [
     { name = "torch" },
@@ -511,14 +511,14 @@ wheels = [
 
 [[package]]
 name = "flash-attn"
-version = "2.7.3"
-source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3%2Bcu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl" }
+version = "2.8.3+cu124torch2.5"
+source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.5.4/flash_attn-2.8.3%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
 dependencies = [
     { name = "einops" },
     { name = "torch" },
 ]
 wheels = [
-    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3%2Bcu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl", hash = "sha256:cd0ead6ad92bff21f90cf0aecdf859bc7145bf4e7dc8ed1fdc3cc38299651ce4" },
+    { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.5.4/flash_attn-2.8.3%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl", hash = "sha256:a2a97b525cf006eb71456f6a7844a34cc4d034463599ab4bc6771cfdd04abb72" },
 ]
 
 [package.metadata]
@@ -1598,7 +1598,7 @@ requires-dist = [
     { name = "cmake", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
     { name = "cnms", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", directory = "libs/cnms" },
     { name = "einops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "flash-attn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'flash-attn'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3%2Bcu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl" },
+    { name = "flash-attn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'flash-attn'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.5.4/flash_attn-2.8.3%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" },
     { name = "h5py", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
     { name = "huggingface-hub", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
     { name = "matplotlib", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
@@ -1675,7 +1675,7 @@ wheels = [
 
 [[package]]
 name = "pointgroup-ops"
-version = "0.0.0"
+version = "0.0.0+cu124torch2.5"
 source = { directory = "libs/pointgroup_ops" }
 dependencies = [
     { name = "torch" },
@@ -1686,7 +1686,7 @@ requires-dist = [{ name = "torch" }]
 
 [[package]]
 name = "pointops"
-version = "1.0.0"
+version = "1.0.0+cu124torch2.5"
 source = { directory = "libs/pointops" }
 dependencies = [
     { name = "numpy" },
@@ -1701,7 +1701,7 @@ requires-dist = [
 
 [[package]]
 name = "pointrope"
-version = "0.1.0"
+version = "0.1.0+cu124torch2.5"
 source = { directory = "libs/pointrope" }
 dependencies = [
     { name = "torch" },
@@ -1924,7 +1924,7 @@ wheels = [
 
 [[package]]
 name = "pytorch3d-ops"
-version = "0.7.9"
+version = "0.7.9+cu124torch2.5"
 source = { directory = "libs/pytorch3d_ops" }
 dependencies = [
     { name = "torch" },
@@ -2130,7 +2130,7 @@ wheels = [
 
 [[package]]
 name = "serialize-cuda"
-version = "0.1.0"
+version = "0.1.0+cu124torch2.5"
 source = { directory = "libs/serialize_cuda" }
 dependencies = [
     { name = "torch" },

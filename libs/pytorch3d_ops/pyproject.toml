@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytorch3d-ops"
-version = "0.7.9"
+version = "0.7.9+cu124torch2.5"
 description = "Minimal PyTorch3D subset with point-cloud operators and chamfer distance"
 authors = [{ name = "FAIR" }]
 dependencies = ["torch"]
@@ -16,12 +16,12 @@ Homepage = "https://github.com/facebookresearch/pytorch3d"
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "setup.py" },
-    { file = "**/*.py" },
-    { file = "**/*.cpp" },
-    { file = "**/*.cu" },
-    { file = "**/*.cuh" },
-    { file = "**/*.h" },
-    { file = "**/*.hpp" },
+    { file = "pytorch3d_ops/**/*.py" },
+    { file = "pytorch3d_ops/csrc/**/*.cpp" },
+    { file = "pytorch3d_ops/csrc/**/*.cu" },
+    { file = "pytorch3d_ops/csrc/**/*.cuh" },
+    { file = "pytorch3d_ops/csrc/**/*.h" },
+    { file = "pytorch3d_ops/csrc/**/*.hpp" },
     { env = "TORCH_CUDA_ARCH_LIST" },
     { env = "CUDA_HOME" },
     { env = "CC" },

@@ -44,7 +44,7 @@ NVCC_FLAGS = get_cuda_arch_flags() + ["-O3", "--use_fast_math"]
 
 setup(
     name="serialize_cuda",
-    version="0.1.0",
+    version="0.1.0+cu124torch2.5",
     ext_modules=[
         CUDAExtension(
             name="serialize_cuda",

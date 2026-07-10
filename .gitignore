@@ -56,3 +56,5 @@ WORKFLOW-private-fork.md
 tools/
 tests/
 scripts/
+!/.github/scripts/
+!/.github/scripts/**

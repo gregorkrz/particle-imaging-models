@@ -36,7 +36,7 @@ NVCC_FLAGS = get_cuda_arch_flags() + [
 
 setup(
     name="pointrope",
-    version="0.1.0",
+    version="0.1.0+cu124torch2.5",
     packages=["pointrope"],
     package_dir={"pointrope": "."},
     ext_modules=[

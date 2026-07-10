@@ -18,7 +18,7 @@ sources = [
 
 setup(
     name="pointops",
-    version="1.0",
+    version="1.0.0+cu124torch2.5",
     install_requires=["torch", "numpy"],
     packages=["pointops"],
     package_dir={"pointops": "functions"},

@@ -4,19 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "serialize-cuda"
-version = "0.1.0"
+version = "0.1.0+cu124torch2.5"
 dependencies = ["torch"]
 
 [tool.uv]
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "setup.py" },
-    { file = "**/*.py" },
-    { file = "**/*.cpp" },
-    { file = "**/*.cu" },
-    { file = "**/*.cuh" },
-    { file = "**/*.h" },
-    { file = "**/*.hpp" },
+    { file = "bindings.cpp" },
+    { file = "hilbert_cuda.cu" },
+    { file = "hilbert_cuda_approx.cu" },
+    { file = "morton_cuda.cu" },
     { env = "TORCH_CUDA_ARCH_LIST" },
     { env = "CUDA_HOME" },
     { env = "CC" },

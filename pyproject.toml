@@ -48,7 +48,7 @@ train = [
     "serialize-cuda; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 flash-attn = [
-    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3%2Bcu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.5.4/flash_attn-2.8.3%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 
 [dependency-groups]
@@ -83,6 +83,10 @@ include = ["pimm*"]
 required-version = ">=0.11.1"
 default-groups = []
 concurrent-builds = 1
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "pimm/**/*.py" },
+]
 environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
     "sys_platform == 'darwin' and platform_machine == 'arm64'",

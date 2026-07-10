@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "repository": "DeepLearnPhysics/particle-imaging-models",
+  "stacks": [
+    {
+      "id": "cu124-torch2.5-cp310",
+      "python": "3.10",
+      "python_tag": "cp310",
+      "torch": "2.5.0+cu124",
+      "cuda": "12.4",
+      "cuda_tag": "cu124",
+      "arches": [
+        "8.0",
+        "8.6",
+        "8.9",
+        "9.0"
+      ],
+      "build_image": "pytorch/pytorch:2.5.0-cuda12.4-cudnn9-devel",
+      "release_tag": "native-wheels-cu124-torch2.5-cp310-v1",
+      "packages": [
+        {
+          "path": "libs/cnms",
+          "base_version": "2.0.0",
+          "distribution": "cnms",
+          "import_name": "cnms"
+        },
+        {
+          "path": "libs/pointgroup_ops",
+          "base_version": "0.0.0",
+          "distribution": "pointgroup-ops",
+          "import_name": "pointgroup_ops"
+        },
+        {
+          "path": "libs/pointops",
+          "base_version": "1.0.0",
+          "distribution": "pointops",
+          "import_name": "pointops"
+        },
+        {
+          "path": "libs/pointrope",
+          "base_version": "0.1.0",
+          "distribution": "pointrope",
+          "import_name": "pointrope"
+        },
+        {
+          "path": "libs/pytorch3d_ops",
+          "base_version": "0.7.9",
+          "distribution": "pytorch3d-ops",
+          "import_name": "pytorch3d_ops"
+        },
+        {
+          "path": "libs/serialize_cuda",
+          "base_version": "0.1.0",
+          "distribution": "serialize-cuda",
+          "import_name": "serialize_cuda"
+        }
+      ]
+    }
+  ]
+}
