@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "dataset": {
+    "repo_id": "DeepLearnPhysics/PILArNet-M-mini",
+    "repo_type": "dataset",
+    "revision": "c218be4a76948bb44c3dcd7964f4b22c6c0052f4",
+    "split": "test",
+    "event_count": 20,
+    "files": {
+      "train/generic_v2_80_v2.h5": {
+        "events": 80,
+        "sha256": "c8056fa915efb50bff1e06e746240ed0cce166b41693502b361b208fe3296f1f"
+      },
+      "val/generic_v2_20_v2.h5": {
+        "events": 20,
+        "sha256": "4881c1651e4bcfbd91e39c7a18de907aa2fd2d8389de0ace8b96c1a22926ae64"
+      },
+      "test/generic_v2_20_v2.h5": {
+        "events": 20,
+        "sha256": "8c092b797736f64130826a63c28fa2493a00e5efbe1c38d62326b676b00cf8a5"
+      }
+    }
+  },
+  "baselines": {
+    "semantic": {
+      "config": "configs/panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-fft.py",
+      "model_uri": "hf://DeepLearnPhysics/panda-semantic@c1cdee0262a08b2e0f0c60a6b33128e0d3622554",
+      "model_revision": "c1cdee0262a08b2e0f0c60a6b33128e0d3622554",
+      "evaluator": {
+        "type": "SemSegTester",
+        "verbose": false,
+        "ignore_index": -1,
+        "macro_ignore_class_ids": []
+      },
+      "expected": {
+        "m_iou": {
+          "value": 0.9628563788935833,
+          "abs_tolerance": 0.002
+        },
+        "m_acc": {
+          "value": 0.9791644672389331,
+          "abs_tolerance": 0.002
+        },
+        "all_acc": {
+          "value": 0.9923788064548179,
+          "abs_tolerance": 0.002
+        },
+        "m_f1": {
+          "value": 0.9806231442127352,
+          "abs_tolerance": 0.002
+        }
+      }
+    },
+    "particle": {
+      "config": "configs/panda/panseg/detector-v4-pt-v3m2-ft-pid-fft.py",
+      "model_uri": "hf://DeepLearnPhysics/panda-particle@bd90792dfe83cd05b437b719564b311f0a0b785a",
+      "model_revision": "bd90792dfe83cd05b437b719564b311f0a0b785a",
+      "model_overrides": {
+        "model.enable_flash": false
+      },
+      "evaluator": {
+        "type": "InstanceSegTester",
+        "class_names": [
+          "photon",
+          "electron",
+          "muon",
+          "pion",
+          "proton"
+        ],
+        "stuff_classes": [
+          5
+        ],
+        "stuff_threshold": 0.5,
+        "mask_threshold": 0.5,
+        "iou_thresh": 0.5,
+        "require_class_for_match": false,
+        "verbose": false
+      },
+      "expected": {
+        "det_precision": {
+          "value": 0.9620253164556962,
+          "abs_tolerance": 0.02
+        },
+        "det_recall": {
+          "value": 0.9620253164556962,
+          "abs_tolerance": 0.02
+        },
+        "det_f1": {
+          "value": 0.9620253164556962,
+          "abs_tolerance": 0.02
+        },
+        "det_mean_iou": {
+          "value": 0.9639534839563282,
+          "abs_tolerance": 0.02
+        },
+        "class_f1_macro": {
+          "value": 0.5981893402106169,
+          "abs_tolerance": 0.03
+        },
+        "ari_mean": {
+          "value": 0.9882690204205001,
+          "abs_tolerance": 0.01
+        }
+      }
+    }
+  }
+}

@@ -44,14 +44,14 @@ def get_extensions():
         return []
 
     this_dir = os.path.dirname(os.path.abspath(__file__))
-    extensions_dir = os.path.join(this_dir, "pytorch3d_ops", "csrc")
+    extensions_dir = os.path.join("pytorch3d_ops", "csrc")
     sources = glob.glob(os.path.join(extensions_dir, "**", "*.cpp"), recursive=True)
     source_cuda = glob.glob(os.path.join(extensions_dir, "**", "*.cu"), recursive=True)
     extension = CppExtension
 
     extra_compile_args = {"cxx": ["-std=c++17"]}
     define_macros = []
-    include_dirs = [extensions_dir]
+    include_dirs = [os.path.join(this_dir, extensions_dir)]
 
     force_cuda = os.getenv("FORCE_CUDA", "0") == "1"
     force_no_cuda = os.getenv("PYTORCH3D_FORCE_NO_CUDA", "0") == "1"
@@ -125,8 +125,6 @@ def get_extensions():
                     raise ValueError(msg)
 
         extra_compile_args["nvcc"] = nvcc_args
-
-    sources = [os.path.join(extensions_dir, s) for s in sources]
 
     ext_modules = [
         extension(

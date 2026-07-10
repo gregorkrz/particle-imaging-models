@@ -94,7 +94,7 @@ apptainer exec --nv \
 Manual Shifter use should do the equivalent volume mount:
 
 ```bash
-shifter --image=youngsm/pimm:v1.0.0-pytorch2.5.0-cuda12.4-cudnn9-devel \
+shifter --image=youngsm/pimm-nersc:pytorch2.13.0-cuda12.6 \
   --volume="$PWD:/opt/pimm/src" \
   /bin/bash -lc 'cd /opt/pimm/src && pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask'
 ```

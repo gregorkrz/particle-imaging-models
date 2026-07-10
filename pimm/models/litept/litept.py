@@ -15,11 +15,11 @@ import torch_scatter
 from addict import Dict
 from timm.layers import DropPath
 
-import flash_attn
 from pointrope import PointROPE
 
 from pimm.models.builder import MODELS
 from pimm.models.modules import PointModule, PointSequential
+from pimm.models.utils.attention import flash_attn_varlen_qkvpacked_func
 from pimm.models.utils.misc import offset2bincount
 from pimm.models.utils.structure import Point
 
@@ -349,7 +349,7 @@ class PointROPEAttention(PointModule):
             ],
             dim=1,
         )
-        feat = flash_attn.flash_attn_varlen_qkvpacked_func(
+        feat = flash_attn_varlen_qkvpacked_func(
             qkv_rotated,
             cu_seqlens,
             max_seqlen=max_seqlen,

@@ -2,8 +2,7 @@
 
 A hook is a subclass of {py:class}`~pimm.engines.hooks.default.HookBase` with one or more lifecycle methods. The
 trainer builds it from a config dict, attaches itself at `self.trainer`, and
-calls your methods at the right point in the training loop. This page covers the minimal
-recipe, the resume-aware gotchas, and the do's and don'ts.
+calls your methods at the right point in the training loop.
 
 :::{seealso}
 Read {doc}`../hooks/index` for the full lifecycle diagram and the `comm_info` / `storage`
@@ -73,13 +72,13 @@ def before_train(self):
 
 For a mid-epoch resume you can also reconstruct from
 `trainer.start_epoch * len(trainer.train_loader) + trainer.start_iter`. Without
-this, a resumed run restarts your counter at 0 and your cadence drifts out of
+this, a resumed run restarts your counter at 0 and your timing drifts out of
 alignment with the global step.
 
-## The hook state contract
+## Hook state requirements
 
 The generic checkpoint payload saves **model, optimizer, scheduler, scaler,
-dataloader, RNG, and trainer state** — and nothing else. Arbitrary hook
+dataloader, RNG, and trainer state** - and nothing else. Arbitrary hook
 attributes are **not** persisted.
 
 ```{list-table}
@@ -98,14 +97,14 @@ attributes are **not** persisted.
 
 If a counter can be **derived** from `trainer.global_step`, derive it in
 `before_train()` (cheap, no new format). If a hook owns genuine state that must
-resume bit-exactly, give it an **explicit checkpoint contract**: write a side
+resume bit-exactly, give it **explicit checkpoint handling**: write a side
 file under `cfg.save_path` on save, and read it back in `before_train()`.
 
 :::{warning}
 {py:class}`~pimm.engines.hooks.eval.pretrain.online_probe.OnlineLinearProbe` is the cautionary example: its probe head and optimizer live
 on the hook, not on `trainer.model`, so the checkpoint payload does **not** save
 them. A resumed probe starts from scratch. That's fine for a diagnostic probe;
-it would not be fine for anything load-bearing.
+it would not be fine for state that training correctness depends on.
 :::
 
 ## Distributed correctness
@@ -152,16 +151,9 @@ it would not be fine for anything load-bearing.
 
 **Don't**
 
-- Don't assume `trainer.writer` exists — it's rank-0 only and may be `None`.
+- Don't assume `trainer.writer` exists - it's rank-0 only and may be `None`.
 - Don't rely on the generic payload to save hook attributes; it won't.
-- Don't run collective saves/gathers under an `is_main_process()` guard — that
+- Don't run collective saves/gathers under an `is_main_process()` guard - that
   deadlocks the other ranks.
 - Don't `cp` a fine-tune checkpoint into a live run's `model/last/`; the next atomic
   save wipes extra files there.
-
-## Next
-
-- {doc}`../hooks/logging` and {doc}`../hooks/diagnostics` — patterns to copy from the built-in
-  hooks.
-- {doc}`../checkpoints/saving_and_loading` — savers, loaders, and fine-tune remapping.
-- {doc}`../evaluation/index` — writing an evaluator that drives `model_best`.

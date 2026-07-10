@@ -1,7 +1,7 @@
 """Sanity checks for build_point_to_token + build_targets.
 
 Run with:
-    conda run -n pointcept-torch2.5.0-cu12.4 python -m pimm.models.voltmae._test_alignment
+    uv run python -m pimm.models.voltmae._test_alignment
 """
 
 from __future__ import annotations

@@ -1,69 +1,116 @@
 #!/usr/bin/env bash
-# Create a conda env for pimm that matches the Docker image, reusing the same
-# pins (.github/docker/common/versions.sh) and install scripts (.github/docker/common/*).
-#
-#   ./install.sh                 # GPU env, builds flash-attn (matches the image)
-#   ./install.sh --no-flash      # skip flash-attn (configs run with enable_flash=False)
-#   ./install.sh --cpu           # CPU-only: skip CUDA wheels/extensions/flash
-#   ./install.sh --name myenv    # custom env name
-#
-# After it finishes:  conda activate <env>
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$HERE/.github/docker/common/versions.sh"
 
-ENV_NAME="pimm-torch${TORCH_VERSION}-cu${CUDA_VERSION_NO_DOT}"
-WITH_FLASH=1
-CPU_ONLY=0
+LAUNCHER_ONLY=0
+
+# clone target and branch, overridable for forks and CI
+REPO="${PIMM_REPO:-DeepLearnPhysics/particle-imaging-models}"
+BRANCH="${PIMM_BRANCH:-main}"
+# set SKIP_CLONE=1 to install from the current checkout instead of cloning
+SKIP_CLONE="${SKIP_CLONE:-}"
+
+usage() {
+  cat <<'EOF'
+Usage: ./install.sh [--launcher-only]
+
+  --launcher-only  install only the pimm launch/submit command dependencies
+
+Run in a checkout, or bootstrap from scratch:
+
+  curl -sSL https://raw.githubusercontent.com/DeepLearnPhysics/particle-imaging-models/main/install.sh | bash
+
+Environment: PIMM_REPO, PIMM_BRANCH, SKIP_CLONE=1.
+EOF
+}
+
+fail() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+ensure_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return
+  fi
+  command -v curl >/dev/null 2>&1 || fail "curl is required to install uv"
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  command -v uv >/dev/null 2>&1 || fail "uv was installed but is not on PATH"
+}
+
+# a pimm checkout is any directory whose pyproject.toml declares name = "pimm"
+in_pimm_checkout() {
+  [ -f pyproject.toml ] && grep -qE '^name = "pimm"' pyproject.toml
+}
+
+ensure_checkout() {
+  if [ "$SKIP_CLONE" = "1" ] || in_pimm_checkout; then
+    return
+  fi
+  command -v git >/dev/null 2>&1 || fail "git is required to clone pimm"
+  local dir
+  dir="$(basename "$REPO")"
+  if [ ! -d "$dir/.git" ]; then
+    echo "cloning $REPO (branch $BRANCH) into $dir"
+    git clone --branch "$BRANCH" "https://github.com/${REPO}.git" "$dir"
+  fi
+  cd "$dir"
+}
+
+# the prebuilt training wheels exist only for linux x86_64
+require_supported_platform() {
+  [ "$(uname -s)" = "Linux" ] || fail "the training environment supports Linux only"
+  [ "$(uname -m)" = "x86_64" ] || fail "the training environment supports x86_64 only"
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --name) ENV_NAME="$2"; shift 2 ;;
-    --flash) WITH_FLASH=1; shift ;;
-    --no-flash) WITH_FLASH=0; shift ;;
-    --cpu) CPU_ONLY=1; shift ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
-    *) echo "unknown option: $1" >&2; exit 1 ;;
+    --launcher-only)
+      LAUNCHER_ONLY=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "unknown option: $1"
+      ;;
   esac
+  shift
 done
 
-command -v conda >/dev/null || { echo "conda not found on PATH" >&2; exit 1; }
-# Use mamba for the (slow) solves if available; fall back to conda.
-SOLVER=conda
-command -v mamba >/dev/null 2>&1 && SOLVER=mamba
+ensure_uv
+ensure_checkout
 
-echo "creating env: $ENV_NAME (python ${PYTHON_VERSION}) via ${SOLVER}"
-"$SOLVER" create -y -n "$ENV_NAME" -c conda-forge "python=${PYTHON_VERSION}" cmake ninja
-if [ "$CPU_ONLY" -eq 0 ]; then
-  # Toolchain for building the CUDA extensions: nvcc + a host compiler it accepts
-  # (conda-forge's cuda-toolkit 12.4 nvcc requires gcc < 13) + sparsehash headers.
-  "$SOLVER" install -y -n "$ENV_NAME" -c conda-forge \
-    "cuda-toolkit=${CUDA_VERSION}.*" "gcc=12.*" "gxx=12.*" sparsehash
+if [ "$LAUNCHER_ONLY" -eq 1 ]; then
+  uv sync --locked --no-default-groups
+  echo "launcher environment ready. run commands with: uv run pimm"
+  exit 0
 fi
 
-# conda's activation scripts (e.g. activate-gcc_linux-64.sh referencing
-# SYS_SYSROOT) are not `set -u`-clean, so relax nounset around activation.
-set +u
-# shellcheck disable=SC1091
-eval "$(conda shell.bash hook)"
-conda activate "$ENV_NAME"
-set -u
+require_supported_platform
 
-# Build the CUDA extensions against the env's conda toolkit, not a system CUDA the
-# shell may export (e.g. `module load cuda` or /usr/local/cuda).
-export CUDA_HOME="$CONDA_PREFIX"
-unset CUDA_PATH
+uv sync --locked
 
-export PIMM_REQUIREMENTS="$HERE/.github/docker/requirements"
-export PIMM_LIBS="$HERE/libs"
+uv run python - <<PY
+import importlib
 
-bash "$HERE/.github/docker/common/install_torch.sh"
-bash "$HERE/.github/docker/common/install_python_deps.sh"
-if [ "$CPU_ONLY" -eq 0 ]; then
-  bash "$HERE/.github/docker/common/install_pyg.sh"
-  [ "$WITH_FLASH" -eq 1 ] && bash "$HERE/.github/docker/common/install_flash_attn.sh"
-  bash "$HERE/.github/docker/common/install_cuda_exts.sh"
-fi
-pip install --no-cache-dir -e "$HERE"
+modules = [
+    "cnms",
+    "pointgroup_ops",
+    "pointops",
+    "pointrope",
+    "pytorch3d_ops",
+    "serialize_cuda",
+    "spconv",
+    "torch",
+    "torch_cluster",
+    "torch_scatter",
+    "torch_sparse",
+]
+for module in modules:
+    importlib.import_module(module)
+print("validated:", ", ".join(modules))
+PY
 
-echo
-echo "done. activate with:  conda activate $ENV_NAME"
+echo "training environment ready. run commands with: uv run pimm"

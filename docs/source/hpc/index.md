@@ -1,16 +1,16 @@
-# Running on scientific computing hardware
+# Training on a cluster
 
-pimm is designed for HPC from the ground up. The launcher composes a small stack
+The launcher composes a small stack
 of YAML layers into a Slurm job through
 [submitit](https://github.com/facebookincubator/submitit), renders the exact
 script before you submit, and handles containers, requeue chaining, and exact
 resume for you.
 
-- **Interactive vs batch** — salloc live runs vs queued submitit jobs (see below).
-- {doc}`Sites & env <sites>` — S3DF, NERSC, containers, environment variables.
-- {doc}`Chaining & QOS <chaining>` — requeue chains, walltime, accounts, partitions.
-- {doc}`Monitoring <monitoring>` — logs, W&B, Slurm introspection.
-- {doc}`Resuming <resuming>` — resume a submitted run and automatic requeue chains.
+- **Interactive vs batch** - salloc live runs vs queued submitit jobs (see below).
+- {doc}`Sites & env <sites>` - site profiles (including your own cluster), containers, environment variables.
+- {doc}`Chaining & QOS <chaining>` - requeue chains, walltime, accounts, partitions.
+- {doc}`Monitoring <monitoring>` - logs, W&B, Slurm introspection.
+- {doc}`Resuming <resuming>` - resume a submitted run and automatic requeue chains.
 
 ## The launcher model
 
@@ -27,13 +27,13 @@ submits a managed Slurm job. Both load settings in this order, last wins:
 Python configs under `configs/` remain the source of truth for *what* you train.
 Launch YAML describes *execution*: site paths, Slurm resources, container
 runtime, checkpoint weights, resume, run naming, environment, and explicit
-training overrides. Keep them separate — it's what lets one recipe move between
+training overrides. Keep them separate - it's what lets one recipe move between
 sites.
 
 :::{important}
 **Always `--dry-run` before submitting** when you change site, resources,
 account, or recipe. For `pimm submit` the dry-run prints the authoritative
-submitit manifest (a single YAML document) — check the resource parameters,
+submitit manifest (a single YAML document) - check the resource parameters,
 account, partition, GPU request, and pre-rendered requeue attempts before the
 job hits the queue.
 :::
@@ -55,19 +55,17 @@ job hits the queue.
   - Fast-scheduling queues, debugging on real GPUs
 * - Survives disconnect
   - Yes
-  - No — ends if your shell/SSH drops
+  - No - ends if your shell/SSH drops
 * - Chaining
   - Yes (`--chain.jobs N`)
   - No (single-shot; chaining is rejected)
 * - QOS
   - site default or `--slurm.qos`
-  - usually `--slurm.qos interactive`
+  - usually your cluster's interactive QOS via `--slurm.qos`
 ```
 
-### Batch submission
-
 ```bash
-pimm submit --site s3df \
+uv run pimm submit --site mycluster \
   --resources.nnodes 1 \
   --resources.nproc-per-node 4 \
   --resources.time 00:30:00 \
@@ -81,23 +79,24 @@ pimm submit --site s3df \
 `srun` launches one task per node):
 
 ```bash
-pimm submit --site nersc --interactive --slurm.qos interactive \
+uv run pimm submit --site mycluster --interactive --slurm.qos <qos> \
   --resources.nnodes 1 --resources.nproc-per-node 4 --resources.time 02:00:00 \
   --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
+QOS names are cluster-specific, so substitute the interactive QOS your cluster provides.
 `interactive` is a normal launch field, so you can pin `interactive: true` and a
-`slurm: {qos: interactive}` default in a recipe and reduce it to one flag.
+`slurm: {qos: <qos>}` default in a recipe and reduce it to one flag.
 `--dry-run` prints the exact `salloc … srun … bash -lc <script>` command.
 
-## Recipes — reusable execution state
+## Recipes - reusable execution state
 
-When a launch has state beyond a single config path — a stable run name, custom
+When a launch has state beyond a single config path - a stable run name, custom
 Slurm job name, resource overrides, checkpoint weights, resume behavior, W&B
-naming, or training overrides — capture it in a `launch/runs/*.yaml` recipe:
+naming, or training overrides - capture it in a `launch/runs/*.yaml` recipe:
 
 ```bash
-pimm submit --site s3df --recipe launch/runs/e050_tail.yaml \
+uv run pimm submit --site mycluster --recipe launch/runs/e050_tail.yaml \
   --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
@@ -105,7 +104,7 @@ Recipes should stay **portable**. The same recipe submits to a different site
 when its paths and resources are valid:
 
 ```bash
-pimm submit --site nersc --recipe launch/runs/e050_tail.yaml --dry-run
+uv run pimm submit --site slurm --recipe launch/runs/e050_tail.yaml --dry-run
 ```
 
 ## Flag cheat sheet
@@ -142,20 +141,14 @@ pimm submit --site nersc --recipe launch/runs/e050_tail.yaml --dry-run
   - after `--`, as bare `KEY=VALUE`
 ```
 
-## A note on the editable install
+## Launcher environment
 
-Because `pimm` is a console-script entry point, **every login/submit host** where
-you type `pimm launch`/`pimm submit` needs the checkout installed
-(`pip install -e .`) in the active environment. Containerized jobs additionally
-bind `paths.repo_root` over `/opt/pimm/src` so the in-image editable install
-resolves to *your* checkout. See {doc}`sites`.
-
-## Next
-
-- {doc}`sites` — S3DF, NERSC, containers, and environment variables.
-- {doc}`chaining` — walltime, QOS, accounts, and requeue chaining.
-- {doc}`monitoring` — watching a run.
-- {doc}`resuming` — resume a submitted run and automatic requeue chains.
+Every login or submit host where you invoke `pimm launch` or `pimm submit`
+needs the small launcher environment.
+Run `./install.sh --launcher-only` once, then invoke commands with
+`uv run pimm submit ...`.
+The training environment remains inside the compute-node image.
+See {doc}`sites`.
 
 ```{toctree}
 :hidden:

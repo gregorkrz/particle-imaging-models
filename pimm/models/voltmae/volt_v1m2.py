@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-import flash_attn
 import spconv.pytorch as spconv
 import torch
 import torch.nn as nn
@@ -35,6 +34,7 @@ from torch.nn.init import trunc_normal_
 
 from pimm.models.builder import MODELS
 from pimm.models.modules import PointModel, PointModule, PointSequential
+from pimm.models.utils.attention import flash_attn_varlen_qkvpacked_func
 from pimm.models.utils.structure import Point
 from pimm.utils.logger import get_logger
 
@@ -121,7 +121,7 @@ class RoPE_Attention(nn.Module):
         qkv = torch.stack([q, k, v], dim=0).permute(2, 0, 1, 3)
 
         qkv_dtype = qkv.dtype
-        x = flash_attn.flash_attn_varlen_qkvpacked_func(
+        x = flash_attn_varlen_qkvpacked_func(
             qkv.half(),
             cu_seqlens,
             max_seqlen=max_seqlen,

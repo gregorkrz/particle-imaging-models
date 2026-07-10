@@ -23,15 +23,14 @@ Tail the log:
 tail -f exp/panda/pretrain/my-run/train.log
 ```
 
-The console line per step comes from {py:class}`~pimm.engines.hooks.logging.IterationTimer` and {py:class}`~pimm.engines.hooks.logging.InformationWriter`:
-`data_time`, `batch_time`, estimated time remaining, and scalar losses. Epoch
-averages are logged at epoch boundaries.
+Each step logs `data_time`, `batch_time`, ETA, and the scalar losses; see {doc}`../hooks/logging`.
+Epoch averages are logged at epoch boundaries.
 
 :::{tip}
 `run_metadata.json` records the exact command, working directory, host, the
 original config path, CLI options, and git metadata for tracked files. It (and
 the saved `config.py`) are the authoritative record of *what a run started
-with* — they are written once and **not** rewritten on resume.
+with* - they are written once and **not** rewritten on resume.
 :::
 
 ## Experiment trackers
@@ -43,7 +42,7 @@ Rank 0 writes either W&B or TensorBoard:
 :::{tab-item} Weights & Biases
 ```bash
 export WANDB_API_KEY=...
-pimm submit --site s3df --train.config <cfg> \
+pimm submit --site mycluster --train.config <cfg> \
   --run.wandb-name my-display-name \
   --run.wandb-project Pretraining-Sonata-PILArNet-M
 ```
@@ -83,11 +82,13 @@ flags:
 scontrol show job <jobid> | grep -E 'Account|Partition|QOS|Gres'
 ```
 
+A timeout-then-requeue looks like a job state transition in `squeue` followed by a fresh attempt picking up from the latest complete checkpoint.
+
 submitit also writes its own logs (stdout/stderr and the manifest) under its job
-folder. The `--dry-run` manifest — or `--output PATH` — is the record of the
+folder. The `--dry-run` manifest - or `--output PATH` - is the record of the
 exact resources, account, partition, and pre-rendered requeue attempts.
 
-## Is my checkpoint healthy?
+## Checkpoint health
 
 A `standard`/DCP checkpoint is **complete** only if its directory exists and
 contains a `.complete` marker. To find the newest complete checkpoint the way
@@ -100,15 +101,3 @@ python -m pimm.utils.path latest-checkpoint exp/panda/pretrain/my-run
 Candidates, newest-first: `model/last`, `model/last.prev`, `model/model_last.pth`.
 The `.prev` rotation means an interrupted save never destroys the previous good
 checkpoint. See {doc}`../checkpoints/index`.
-
-## Watching a chain
-
-For a requeue chain, each attempt resumes the same experiment directory, so
-`train.log` keeps growing and W&B runs appear as `<base>-job000N` within one
-group. A timeout-then-requeue looks like a job state transition in `squeue`
-followed by a fresh attempt picking up from the latest complete checkpoint.
-
-## Next
-
-- {doc}`../checkpoints/resuming` — what's restored on resume.
-- {doc}`../checkpoints/index` — checkpoint completeness and formats.

@@ -5,17 +5,125 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pimm"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.11"
 dependencies = [
     "PyYAML",
     "submitit",
     "tyro",
     "addict",
     "yapf",
-] # NOTE: just for CLI job sumbmission. you need either environment.yml or the supplied dockerfile to do any training
+]
+
+[dependency-groups]
+train = [
+    "h5py; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "tensorboardx; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "wandb; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "einops; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "termcolor; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "matplotlib; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "scikit-learn; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "nvidia-ml-py; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "rich; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pandas; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "huggingface-hub; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "safetensors; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "timm; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "regex; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch==2.13.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torchvision==0.28.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torchdata; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch-geometric; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch-scatter; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch-sparse; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch-cluster; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "spconv-cu126; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pointrope; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pointops; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pointgroup-ops; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "cnms; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pytorch3d-ops; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "serialize-cuda; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+dev = [
+    "black",
+    "jupyterlab",
+    "pytest",
+]
+nersc = [
+    "cython",
+    "mpi4py",
+]
+docs = [
+    "linkify-it-py>=2.0",
+    "myst-parser>=2.0",
+    "pydata-sphinx-theme>=0.15",
+    "sphinx-copybutton>=0.5",
+    "sphinx-design>=0.5",
+    "sphinx-sitemap>=2.5",
+    "sphinx-togglebutton>=0.3",
+    "sphinx-book-theme>=1.1",
+    "sphinx>=7.2",
+]
 
 [project.scripts]
 pimm = "pimm.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["pimm*"]
+
+[tool.uv]
+required-version = ">=0.11.1"
+exclude-newer = "7 days"
+default-groups = ["train"]
+concurrent-builds = 1
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "pimm/**/*.py" },
+]
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+
+[tool.uv.exclude-newer-package]
+torch = false
+torchvision = false
+cnms = false
+pointgroup-ops = false
+pointops = false
+pointrope = false
+pytorch3d-ops = false
+serialize-cuda = false
+torch-scatter = false
+torch-sparse = false
+torch-cluster = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+torchvision = { index = "pytorch-cu126" }
+pointrope = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/pointrope-0.1.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+pointops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/pointops-1.0.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+pointgroup-ops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/pointgroup_ops-0.0.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+cnms = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/cnms-2.0.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+pytorch3d-ops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/pytorch3d_ops-0.7.9%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+serialize-cuda = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/serialize_cuda-0.1.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+torch-scatter = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/torch_scatter-2.1.2-cp310-cp310-linux_x86_64.whl" }
+torch-sparse = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/torch_sparse-0.6.18-cp310-cp310-linux_x86_64.whl" }
+torch-cluster = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/torch_cluster-1.6.3-cp310-cp310-linux_x86_64.whl" }
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+addopts = "-ra"
+markers = [
+    "gpu: requires a CUDA-capable GPU and CUDA runtime",
+    "external_data: requires data outside the source checkout",
+    "external_model: downloads a model from an external registry",
+    "cluster: requires a managed cluster or scheduler environment",
+    "distributed: requires at least two GPUs for multi-rank training",
+]

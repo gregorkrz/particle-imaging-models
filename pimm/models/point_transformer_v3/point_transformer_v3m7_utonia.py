@@ -15,10 +15,7 @@ from addict import Dict
 from timm.layers import DropPath
 from torch.nn.init import trunc_normal_
 
-try:
-    import flash_attn
-except ImportError:
-    flash_attn = None
+from pimm.models.utils.attention import flash_attn_varlen_func
 
 from pimm.models.builder import MODELS
 from pimm.models.modules import PointModule, PointSequential
@@ -205,7 +202,6 @@ class SerializedAttention(PointModule):
             assert (
                 upcast_softmax is False
             ), "Set upcast_softmax to False when enable Flash Attention"
-            assert flash_attn is not None, "Make sure flash_attn is installed."
             self.patch_size = patch_size
             self.attn_drop = attn_drop
         else:
@@ -343,7 +339,7 @@ class SerializedAttention(PointModule):
             qkv_bf = qkv.to(torch.bfloat16).reshape(-1, 3, H, C // H)
             q, k, v = qkv_bf.unbind(dim=1)  # each (N_pad, H, D)
             q, k = self.rope(q, k, rope_coord)  # rope_coord: (N_pad, 3)
-            feat = flash_attn.flash_attn_varlen_func(
+            feat = flash_attn_varlen_func(
                 q, k, v,
                 cu_seqlens_q=cu_seqlens,
                 cu_seqlens_k=cu_seqlens,

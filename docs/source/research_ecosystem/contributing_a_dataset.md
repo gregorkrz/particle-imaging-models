@@ -3,17 +3,16 @@
 Adding a dataset to pimm is **one registered class**. It does three things: index
 your events, read one event into a flat numpy dict, and run a transform pipeline
 that turns that dict into the packed batch a model consumes. No separate reader,
-no base class to satisfy beyond `torch.utils.data.Dataset` — the same shape as
+no base class to satisfy beyond `torch.utils.data.Dataset` - the same shape as
 the built-in {py:class}`~pimm.datasets.pilarnet.PILArNetH5Dataset`.
 
 :::{seealso}
 For a complete, runnable example that takes a custom dataset all the way to a
 trained semantic-segmentation model, see the tutorial
-{doc}`../tutorials/byo_dataset_semseg`. This page is the reference walkthrough;
-that one is the end-to-end story.
+{doc}`../tutorials/byo_dataset_semseg`.
 :::
 
-## 1. The contract
+## 1. Requirements
 
 Register a `torch.utils.data.Dataset` in the `DATASETS` registry. These are the
 only methods that matter:
@@ -27,7 +26,7 @@ only methods that matter:
   - What it does / returns
 * - `__init__(self, data_root, split, transform=None, …)`
   - yes
-  - Index your events up front (cheap — no open file handles), and build the
+  - Index your events up front (cheap - no open file handles), and build the
     pipeline with `self.transform = Compose(transform)`.
 * - `get_data(self, idx)`
   - by convention
@@ -36,7 +35,7 @@ only methods that matter:
     metadata. Raw numpy, before any transform.
 * - `__getitem__(self, idx)`
   - yes
-  - `return self.transform(self.get_data(idx))` — the transformed sample the
+  - `return self.transform(self.get_data(idx))` - the transformed sample the
     loader collates into a packed batch.
 * - `__len__(self)`
   - yes
@@ -45,7 +44,7 @@ only methods that matter:
 
 Two invariants keep everything downstream working: build the pipeline with
 `Compose(transform)` in `__init__` (pimm hands you the raw **list of dicts**,
-never a prebuilt `Compose`), and return **raw numpy** from `get_data` —
+never a prebuilt `Compose`), and return **raw numpy** from `get_data` -
 {py:class}`~pimm.datasets.transform.base.ToTensor` converts late in the pipeline
 and the geometry transforms need numpy. Name your primary spatial array `coord`
 so transforms like {py:class}`~pimm.datasets.transform.spatial.NormalizeCoord` /
@@ -53,7 +52,7 @@ so transforms like {py:class}`~pimm.datasets.transform.spatial.NormalizeCoord` /
 
 ## 2. Write the dataset class
 
-This is the whole thing — discovery + indexing in `__init__`, one raw event in
+This is the whole thing - discovery + indexing in `__init__`, one raw event in
 `get_data`, transforms applied in `__getitem__`. The HDF5 specifics are an
 example; swap them for your format.
 
@@ -111,12 +110,12 @@ class MyDataset(Dataset):
 **Return raw numpy in `get_data`.** Conversion to tensors is
 {py:class}`~pimm.datasets.transform.base.ToTensor`'s job, late in the pipeline;
 returning tensors early breaks the numpy-based geometry transforms. Always attach
-`name` / `split` metadata — evaluators and hooks expect them.
+`name` / `split` metadata - evaluators and hooks require them.
 :::
 
 :::{tip}
 If your whole dataset fits a different layout (one file per event, `.npz`, a
-ROOT export, in-memory arrays…), only `__init__` and `get_data` change — index
+ROOT export, in-memory arrays…), only `__init__` and `get_data` change - index
 whatever you have, and return the same flat numpy dict. The lazy-open dance above
 is only needed because h5py handles don't survive the DataLoader worker fork; a
 one-file-per-event reader can just `np.load` in `get_data`.
@@ -149,13 +148,13 @@ Keys not in `index_valid_keys` keep their original length and silently mismatch
 
 ## 5. What the collate function expects
 
-You never set a `collate_fn` on your dataset — the trainer picks it when it builds
+You never set a `collate_fn` on your dataset - the trainer picks it when it builds
 the loader (the default is the point-cloud
 {py:func}`~pimm.datasets.utils.collate_fn`). Your only job is to emit per-sample
 dicts it can pack. A few rules follow from how it works:
 
 - **Tensors are concatenated, not stacked.** Point-aligned arrays from every
-  sample are joined into one ragged `(N_total, …)` tensor — there is no batch
+  sample are joined into one ragged `(N_total, …)` tensor - there is no batch
   dimension. Events stay separable only through `offset`.
 - **`offset` is mandatory and cumulative.** Any key containing `offset` is treated
   as per-sample point counts and accumulated across the batch.
@@ -164,17 +163,17 @@ dicts it can pack. A few rules follow from how it works:
   can't tell where one event ends.
 - **`_`-prefixed keys are dropped.** Use a leading underscore for scratch or
   un-collatable metadata you don't want batched.
-- **Strings become a list** (one entry per sample) — fine for `name`. Everything
+- **Strings become a list** (one entry per sample) - fine for `name`. Everything
   else falls through to `default_collate`, so scalars stack normally.
 - **Same width across samples.** Per-point arrays must be tensors of identical
   trailing shape (e.g. `feat` is always `(N, C)`) so `cat` succeeds.
   {py:class}`~pimm.datasets.transform.base.ToTensor` does the conversion late in
-  the pipeline — keep `get_data` numpy.
+  the pipeline - keep `get_data` numpy.
 
 If your method genuinely needs a different batching scheme (e.g. flattening a
 per-sample *list* of queries, like
 {py:func}`~pimm.datasets.utils.inseg_collate_fn`), that's a **trainer** concern,
-not a dataset one — subclass the trainer's `build_train_loader` rather than
+not a dataset one - subclass the trainer's `build_train_loader` rather than
 changing the dataset. See {doc}`contributing_a_model`.
 
 ## 6. Stay resume-safe (stateful loading)
@@ -187,7 +186,7 @@ requirements on your class:
 - **Be map-style and deterministic in `idx`.** Provide integer `__getitem__` +
   `__len__` and make index → event a fixed mapping. The sampler owns ordering and
   hands you positions, so never keep an internal "next sample" cursor or shuffle
-  inside the dataset. Random *augmentation* in transforms is fine — the loader
+  inside the dataset. Random *augmentation* in transforms is fine - the loader
   snapshots worker RNG.
 - **Keep `len(dataset)` stable.** The sampler records the dataset length and
   **refuses to resume** if it changes (`Sampler state length … does not match
@@ -200,7 +199,7 @@ requirements on your class:
   pattern in §2). Opening them in `__init__` corrupts state across forked
   workers and breaks both throughput and resume.
 
-Stick to a plain map-style dataset and you're on the supported path — exotic
+Stick to a plain map-style dataset and you're on the supported path - exotic
 loaders that can't snapshot their state force checkpoints to epoch boundaries
 only.
 
@@ -237,7 +236,7 @@ Loader knobs (`batch_size`, `num_worker_per_gpu`, `seed`, `mix_prob`) go at the
 ## 8. Verify a sample and a batch
 
 Because the transform runs inside `__getitem__`, `ds[0]` is already a transformed
-sample. Confirm it — and a collated batch — have the shapes your model expects:
+sample. Confirm it - and a collated batch - have the shapes your model requires:
 
 ```python
 from pimm.datasets import build_dataset
@@ -261,9 +260,7 @@ print(batch["offset"])              # cumulative, last == N_total
 assert batch["offset"][-1].item() == batch["coord"].shape[0]
 ```
 
-If `feat` has the channel count your backbone's `in_channels` expects and
-`offset` is cumulative with `offset[-1] == N_total`, the dataset speaks the
-packed contract correctly. See {doc}`../datasets/data_format`.
+If `feat`'s channel count matches your backbone's `in_channels` and `offset` is cumulative with `offset[-1] == N_total`, the dataset emits the packed format correctly. See {doc}`../datasets/data_format`.
 
 ## Checklist
 
@@ -276,11 +273,3 @@ packed contract correctly. See {doc}`../datasets/data_format`.
 7. New point-aligned keys added to `index_valid_keys`.
 8. Config pipeline ends in `ToTensor` + `Collect` (stamps `offset`); loader knobs at top level.
 9. Verify `dataset[0].keys()` and a collated batch's shapes (`offset[-1] == N_total`).
-
-## See also
-
-- {doc}`contributing_a_transform` — the augmentation/preprocessing steps your pipeline runs.
-- {doc}`../tutorials/byo_dataset_semseg` — the full end-to-end tutorial.
-- {doc}`../datasets/data_format` — the batch contract you are targeting.
-- {doc}`../datasets/transforms` — `index_valid_keys`, `Collect`, and the pipeline.
-- {doc}`All registered datasets <../api/registry/datasets>` — `PILArNetH5Dataset` and friends to crib from.

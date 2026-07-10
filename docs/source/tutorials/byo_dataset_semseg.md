@@ -1,7 +1,7 @@
 # Training a semantic segmentation model
 
-**Goal.** You have your own detector point clouds — 3D hits with an energy (or
-charge) feature and a per-point class label — and you want to train a
+**Goal.** You have your own detector point clouds - 3D hits with an energy (or
+charge) feature and a per-point class label - and you want to train a
 [Point Transformer V3](https://arxiv.org/abs/2312.10035) backbone to predict
 those classes. By the end you'll have a registered dataset, a config, and a
 trained, evaluated model.
@@ -36,10 +36,10 @@ Everything below exists to produce that batch from *your* files.
 ## 1. Write a Dataset class
 
 A pimm dataset is **one** ordinary `torch.utils.data.Dataset` registered in the
-`DATASETS` registry — no separate reader, no base class to satisfy. Its whole job
+`DATASETS` registry - no separate reader, no base class to satisfy. Its whole job
 is to turn an index into a flat numpy dict (`coord`, your feature, `segment`, …)
 and run a transform pipeline that produces the packed batch from section 0. The
-contract is small — these are the only methods that matter:
+interface is small - these are the only methods that matter:
 
 ```{list-table}
 :header-rows: 1
@@ -59,7 +59,7 @@ contract is small — these are the only methods that matter:
     metadata strings. Raw numpy, before any transform.
 * - `__getitem__(self, idx)`
   - yes
-  - `return self.transform(self.get_data(idx))` — the transformed sample the
+  - `return self.transform(self.get_data(idx))` - the transformed sample the
     loader collates into a packed batch.
 * - `__len__(self)`
   - yes
@@ -68,11 +68,11 @@ contract is small — these are the only methods that matter:
 
 Two rules keep the rest working: build the pipeline with `Compose(transform)` in
 `__init__` (pimm passes you the raw **list of dicts**, never a prebuilt
-`Compose`), and return **raw numpy** from `get_data` — `ToTensor` converts late
+`Compose`), and return **raw numpy** from `get_data` - `ToTensor` converts late
 in the pipeline and the geometry transforms need numpy. Name your primary
 spatial array `coord` so transforms like `NormalizeCoord` / `GridSample` find it.
 
-Here's the whole class — discovery + indexing in `__init__`, one raw event in
+Here's the whole class - discovery + indexing in `__init__`, one raw event in
 `get_data`, transforms applied in `__getitem__` (the same shape as the built-in
 `PILArNetH5Dataset`):
 
@@ -300,15 +300,15 @@ this number.
 
 ## 4. Quick check
 
-Tiny limits, no W&B, no workers — verifies the whole path before you commit GPUs:
+Tiny limits, no W&B, no workers - verifies the whole path before you commit GPUs:
 
 ```bash
-pimm launch --train.config mytpc/semseg-ptv3 --run.name smoke \
+pimm launch --train.config mytpc/semseg-ptv3 --run.name quickcheck \
   -- epoch=1 data.train.max_len=64 data.val.max_len=32 \
      batch_size=4 num_worker=0 use_wandb=False
 ```
 
-If it runs an epoch and writes `exp/mytpc/smoke/`, your dataset + config are
+If it runs an epoch and writes `exp/mytpc/quickcheck/`, your dataset + config are
 wired correctly.
 
 ## 5. Train
@@ -318,14 +318,15 @@ wired correctly.
 pimm launch --train.config mytpc/semseg-ptv3 --run.name semseg-ptv3-v1 \
   --resources.nproc-per-node 1
 
-# four GPUs on one node — no Slurm needed (global batch_size splits to 4/GPU)
+# four GPUs on one node - no Slurm needed (global batch_size splits to 4/GPU)
 pimm launch --train.config mytpc/semseg-ptv3 --resources.nproc-per-node 4
 ```
 
-On a cluster, submit through a site profile (see {doc}`../hpc/index`):
+On a cluster, submit through a site profile.
+Site profiles are per-cluster; see {doc}`../hpc/sites` for defining one for your cluster.
 
 ```bash
-pimm submit --site s3df --resources.nnodes 1 --resources.nproc-per-node 4 \
+pimm submit --site mycluster --resources.nnodes 1 --resources.nproc-per-node 4 \
   --resources.time 04:00:00 --train.config mytpc/semseg-ptv3
 ```
 
@@ -336,7 +337,7 @@ Watch it with `tail -f exp/mytpc/semseg-ptv3-v1/train.log` or in W&B
 ## 6. Resume
 
 If a run stops, continue it exactly (RNG, dataloader position, step, optimizer
-all restored — even mid-epoch):
+all restored - even mid-epoch):
 
 ```bash
 pimm launch --train.config mytpc/semseg-ptv3 --run.name semseg-ptv3-v1 \
@@ -355,7 +356,7 @@ This runs `pimm/test.py` against the experiment's code snapshot and the
 `SemSegTester` from your config. See {doc}`../evaluation/index`.
 
 To run inference in your own script, load with {py:func}`~pimm.from_pretrained` and reproduce
-the **val** transform — see {doc}`../research_ecosystem/using_trained_models` and
+the **val** transform - see {doc}`../research_ecosystem/using_trained_models` and
 {doc}`../datasets/transforms`.
 
 ## 8. (Optional) Fine-tune from a pretrained backbone
@@ -378,14 +379,14 @@ pimm launch --train.config mytpc/semseg-ptv3 --run.name semseg-ptv3-pt \
   --train.weight hf://<your-org>/sonata-pilarnet-L/model_best.pth
 ```
 
-Because `--train.resume` is **not** set, only weights load — optimizer and
+Because `--train.resume` is **not** set, only weights load - optimizer and
 schedule start fresh, which is what you want for a new task. A remap that matches
 zero parameters raises, so a silent random-init can't happen. See
 {doc}`../checkpoints/saving_and_loading`.
 
 ## Where to go next
 
-- {doc}`panda_detector` — graduate from semantic to panoptic (per-instance) with
+- {doc}`panda_detector` - graduate from semantic to panoptic (per-instance) with
   the Panda Detector.
-- {doc}`../configuration/index` — make reusable config variants.
-- {doc}`../datasets/transforms` — the full transform catalog.
+- {doc}`../configuration/index` - make reusable config variants.
+- {doc}`../datasets/transforms` - the full transform catalog.

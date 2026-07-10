@@ -1,16 +1,15 @@
 # Contributing a model
 
-This page is a practical walkthrough for adding a **new model** to pimm so the
-trainer, evaluators, checkpointer, and launcher all drive it for free. The
-contract is small: a model is a registered `nn.Module` whose
-`forward(input_dict)` consumes a {doc}`packed batch <../datasets/data_format>`
-and returns a **dict** — with a scalar `loss` while training.
+To add a **new model** to pimm, register an `nn.Module` whose `forward(input_dict)`
+consumes a {doc}`packed batch <../datasets/data_format>` and returns a **dict** -
+with a scalar `loss` while training.
+In return, the trainer, evaluators, checkpointer, and launcher all drive it.
 
 :::{seealso}
-The mirror image of this page is {doc}`contributing_a_dataset` (custom
-**data**). For the data → model → train story end-to-end, see the tutorial
+For custom data rather than a custom model, see {doc}`contributing_a_dataset`.
+For the data → model → train story end-to-end, see the tutorial
 {doc}`../tutorials/byo_dataset_semseg`. For the mental model (registries, packed
-tensors, the trainer/model contract), read {doc}`../getting_started/concepts`.
+tensors, the trainer/model interface), read {doc}`../getting_started/concepts`.
 :::
 
 ## 0. Decide how much you need to write
@@ -25,9 +24,9 @@ Most additions are **not** a new top-level model. A new backbone plugs straight
 into {py:class}`~pimm.models.default.DefaultSegmentorV2` via `model.backbone.type`; a different head or
 loss mix is often just a config change. Write a new model class only when the
 **forward pass or output structure** is genuinely different (a new task, a
-multi-branch loss, a custom inference output). If that's you, read on.
+multi-branch loss, a custom inference output).
 
-## 1. The contract
+## 1. Requirements
 
 A pimm model is an `nn.Module` registered in the `MODELS` registry. The trainer
 moves the collated batch to the device and calls your model with it; for
@@ -38,7 +37,7 @@ def forward(self, input_dict, return_point=False): ...
 ```
 
 **What you receive.** `input_dict` is the packed batch (see
-{doc}`../datasets/data_format`) — concatenated across the mini-batch, no batch
+{doc}`../datasets/data_format`) - concatenated across the mini-batch, no batch
 dimension. The keys your model can rely on:
 
 | Key | Shape | Notes |
@@ -54,7 +53,7 @@ backbone/serialization machinery takes over; `Point` derives `batch` from
 `offset` for you.
 
 **What you must return.** A `dict`. The single hard requirement is that during
-training it contains a scalar **`loss`** — the trainer backpropagates
+training it contains a scalar **`loss`** - the trainer backpropagates
 `output_dict["loss"]` and nothing else. The idiomatic three-branch return
 (train / eval / test) also surfaces the logits evaluators consume:
 
@@ -66,7 +65,7 @@ training it contains a scalar **`loss`** — the trainer backpropagates
 
 :::{tip}
 **`loss` vs `total_loss`.** The trainer only ever reads `loss`. `total_loss`, if
-you return it, is a *detached* logging alias — the logging hook displays it under
+you return it, is a *detached* logging alias - the logging hook displays it under
 the name "loss" instead of the graph-attached tensor. Return it only if you want
 the logged number to differ from the backpropped one; otherwise just return
 `loss`.
@@ -75,7 +74,7 @@ the logged number to differ from the backpropped one; otherwise just return
 ## 2. Write the model
 
 This skeleton is a faithful, minimal copy of
-{py:class}`~pimm.models.default.DefaultSegmentorV2` — the canonical pattern of *backbone → head →
+{py:class}`~pimm.models.default.DefaultSegmentorV2` - the canonical pattern of *backbone → head →
 criteria*. Start from it and change the head, the targets, or the output keys.
 
 ```python
@@ -136,7 +135,7 @@ class MySegmentor(nn.Module):
 ```
 
 :::{important}
-`backbone_out_channels` must equal the backbone's final feature width — e.g. a
+`backbone_out_channels` must equal the backbone's final feature width - e.g. a
 `PT-v3m2` with a decoder ends at `dec_channels[0]` (`64` in the reference
 config), while the same backbone in `enc_mode=True` (encoder-only) ends wider
 (`1232`). Mismatch is the most common "shapes don't line up" error. Likewise
@@ -146,7 +145,7 @@ config), while the same backbone in `enc_mode=True` (encoder-only) ends wider
 
 ## 3. Wire in losses
 
-You don't compute the loss by hand — declare it in the config as a list of loss
+You don't compute the loss by hand - declare it in the config as a list of loss
 dicts and let `build_criteria` assemble them. The resulting callable is
 `criteria(pred, target)` and it **sums** every loss in the list:
 
@@ -160,7 +159,7 @@ criteria=[
 Each entry is built from the `LOSSES` registry (see the {doc}`API reference <../api/index>`). A
 loss's `forward(pred, target)` takes `pred` of shape `(N, C)` and `target` of
 shape `(N,)`. Need a loss that doesn't exist yet? Register one the same way you
-register a model — `@LOSSES.register_module()` — and reference it by `type`.
+register a model - `@LOSSES.register_module()` - and reference it by `type`.
 
 ## 4. Register it
 
@@ -200,7 +199,7 @@ See {doc}`../configuration/index` for `_base_` inheritance and overrides, and
 ## 6. Verify forward + loss
 
 Before launching, confirm your model builds and produces a backprop-able loss on
-a synthetic packed batch — no dataset required (this needs the GPU stack, since
+a synthetic packed batch - no dataset required (this needs the GPU stack, since
 `PT-v3*` backbones use spconv/CUDA):
 
 ```python
@@ -233,15 +232,15 @@ trainer can drive your model.
 
 ## 7. What you get for free
 
-Once your model is a registered `nn.Module` with the contract above, you inherit
-the whole stack — no extra wiring:
+Once your model is a registered `nn.Module` meeting the requirements above, you inherit
+the whole stack - no extra wiring:
 
-- **Distributed** — DDP and FSDP2 wrap any `nn.Module` ({doc}`../distributed/index`).
-- **Checkpoint + exact resume** — model/optimizer/RNG/dataloader state
+- **Distributed** - DDP and FSDP2 wrap any `nn.Module` ({doc}`../distributed/index`).
+- **Checkpoint + exact resume** - model/optimizer/RNG/dataloader state
   ({doc}`../checkpoints/index`, {doc}`../checkpoints/resuming`).
-- **Export + Hub** — `pimm export` / {py:func}`~pimm.from_pretrained` round-trips it
+- **Export + Hub** - `pimm export` / {py:func}`~pimm.from_pretrained` round-trips it
   ({doc}`../checkpoints/exporting`, {doc}`../checkpoints/huggingface`).
-- **Hooks + evaluators + HPC launch** — the full lifecycle ({doc}`contributing_a_hook`,
+- **Hooks + evaluators + HPC launch** - the full lifecycle ({doc}`contributing_a_hook`,
   {doc}`../hpc/index`).
 
 A few caveats worth knowing:
@@ -265,9 +264,9 @@ The keys evaluators and testers look for (return the ones your task needs):
 * - Key
   - Consumed by
 * - `loss`
-  - the trainer (backprop), training mode — **required**
+  - the trainer (backprop), training mode - **required**
 * - `seg_logits` (or `sem_logits`)
-  - {py:class}`~pimm.engines.hooks.eval.semantic_segmentation.SemSegEvaluator` / `SemSegTester` — per-point class logits
+  - {py:class}`~pimm.engines.hooks.eval.semantic_segmentation.SemSegEvaluator` / `SemSegTester` - per-point class logits
 * - `point`, `pred_masks`, `pred_logits` (+ `pred_momentum`)
   - {py:class}`~pimm.engines.hooks.eval.instance_segmentation.InstanceSegmentationEvaluator` (call with `return_point=True`, val batch size 1)
 * - `cls_logits`
@@ -282,9 +281,9 @@ The generic {py:class}`~pimm.engines.train.Trainer` (registered as
 `DefaultTrainer`) already covers supervised and self-supervised training: it
 builds the model/loader/optimizer/scheduler, runs `model(input_dict) → loss →
 backward → step`, and drives every hook. **You almost never need a custom
-trainer** — a new task is usually a new *model*, not a new loop.
+trainer** - a new task is usually a new *model*, not a new loop.
 
-The exception is when the *optimization procedure itself* is different — most
+The exception is when the *optimization procedure itself* is different - most
 notably reinforcement learning. {py:class}`~pimm.engines.train.GRPOTrainer`
 replaces the single supervised step with a rollout-based loop: each batch is
 sampled into a group of trajectories, then the policy is updated
@@ -292,7 +291,7 @@ sampled into a group of trajectories, then the policy is updated
 metrics reduced across ranks by key-specific ops (min/max/mean).
 
 A custom trainer subclasses `Trainer`, registers with
-`@TRAINERS.register_module()`, and overrides only the methods that differ —
+`@TRAINERS.register_module()`, and overrides only the methods that differ -
 typically `run_step` (the per-batch optimization) and, if the step count
 changes, `build_scheduler`:
 
@@ -313,7 +312,7 @@ class MyRLTrainer(Trainer):
         ...
 ```
 
-Select it from the config's `train` block — `cfg.train.type` is the registry
+Select it from the config's `train` block - `cfg.train.type` is the registry
 name the launcher builds:
 
 ```python
@@ -333,11 +332,3 @@ complete, production example.
 5. Import the model module in `pimm/models/__init__.py`.
 6. Write a config selecting it by `type`, with `backbone` + `criteria`.
 7. Verify forward + `loss.backward()` on a synthetic batch.
-
-## See also
-
-- {doc}`contributing_a_dataset` — the data-side mirror of this page.
-- {doc}`../tutorials/byo_dataset_semseg` — the full end-to-end tutorial.
-- {doc}`../getting_started/concepts` — registries, packed tensors, the trainer contract.
-- {doc}`../datasets/data_format` — the exact batch your `forward` receives.
-- {doc}`registered models <../api/registry/models>` — registered backbones and heads to build on.

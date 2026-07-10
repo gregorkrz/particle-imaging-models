@@ -1,9 +1,7 @@
 # Hooks
 
-Hooks are how pimm keeps the trainer generic. The `DefaultTrainer` loop only
-knows how to move a batch to the device, call `model(input_dict)`, read a scalar
-`loss`, and step the optimizer. *Everything else* — timing, logging,
-diagnostics, periodic validation, checkpointing, Hugging Face upload — is a
+Hooks are how pimm keeps the trainer generic. The `DefaultTrainer` loop only moves a batch to the device, calls `model(input_dict)`, reads a scalar `loss`, and steps the optimizer. *Everything else* - timing, logging,
+diagnostics, periodic validation, checkpointing, Hugging Face upload - is a
 **hook** plugged into the training lifecycle.
 
 A hook is a small object with lifecycle methods (`before_train`, `after_step`,
@@ -23,8 +21,7 @@ hooks = [
 ```
 
 :::{seealso}
-New to pimm? Read {doc}`../getting_started/concepts` first — hooks build on the
-registry idea (§2) and the one-forward-contract trainer (§4).
+Hooks build on the registry idea and the one-forward trainer rule in {doc}`../getting_started/concepts`.
 :::
 
 ## The lifecycle
@@ -59,7 +56,7 @@ the `current_metric_value` an evaluator just wrote and can mark
 
 :::{note}
 `_record_step_state()` runs **before** `after_step()`. A saver in `after_step()`
-therefore records the resume position *after* the just-completed batch — exactly
+therefore records the resume position *after* the just-completed batch - exactly
 what you want for mid-epoch resume. A hook with its own step counter should seed
 it from `trainer.global_step` in `before_train()` so it stays resume-aware.
 :::
@@ -74,23 +71,23 @@ it from `trainer.global_step` in `before_train()` so it stays resume-aware.
   - When it runs / typical use
 * - `modify_config(cfg)`
   - After all hooks are registered, before the writer is built. Late config
-    edits only — e.g. `WandbNamer` derives `wandb_run_name` here. Not forwarded
+    edits only - e.g. `WandbNamer` derives `wandb_run_name` here. Not forwarded
     by `ModelHook`.
 * - `before_train()`
   - Once, before the first epoch. Checkpoint loading/resume; registering
     forward hooks; seeding resume-aware counters from `trainer.global_step`.
 * - `before_epoch()` / `after_epoch()`
-  - Wrap each epoch. Epoch-cadence evaluators (`every_n_steps == 0`) run from
+  - Wrap each epoch. Per-epoch evaluators (`every_n_steps == 0`) run from
     `after_epoch()`; `InformationWriter` flushes epoch averages here.
 * - `before_step()` / `after_step()`
-  - Wrap each optimizer step. Per-step timing, scalar logging, step-cadence
+  - Wrap each optimizer step. Per-step timing, scalar logging, per-step
     evaluators (`every_n_steps > 0`), and checkpoint savers live here.
 * - `after_train()`
   - Once, after a distributed barrier. `FinalEvaluator` runs the held-out test;
     final checkpoint is written. The writer is closed after hooks finish.
 ```
 
-## How the trainer and hooks talk
+## Shared channels on the trainer
 
 Hooks read and write a few well-known channels on `hook.trainer`:
 
@@ -125,22 +122,11 @@ to it. It does **not** forward `modify_config`.
 
 ## The hook families
 
-- {doc}`Logging <logging>` — run naming, iteration timing, and scalar/console logging — `WandbNamer`, `IterationTimer`, `InformationWriter`, and the writer / storage / `comm_info` channels they use.
-- {doc}`Diagnostics <diagnostics>` — health monitors and runtime mutators — gradient norms, prototype usage, feature std, resources, parameter counts, plus weight-decay / dtype / annealing / profiling hooks.
-- {doc}`Evaluation <../evaluation/index>` — in-loop evaluators that write `current_metric_value`, SSL probe suites, and final held-out testing.
-- {doc}`Checkpointing <../checkpoints/saving_and_loading>` — `CheckpointLoader`, `CheckpointSaver`, `CheckpointSaverIteration` — when to save, fine-tune remapping, and `model_best.pth` selection.
-- {doc}`Hugging Face <../checkpoints/huggingface>` — the `PushToHub` hook for uploading exported weights to the Hub during training.
-
-## Registering a hook
-
-A hook becomes buildable once its `@HOOKS.register_module()` decorator runs, so a
-new hook file must be imported in `pimm/engines/hooks/__init__.py`.
-
-## Next
-
-- {doc}`logging` — the everyday logging hooks.
-- {doc}`diagnostics` — model-health monitors and runtime mutators.
-- {doc}`../evaluation/index` — evaluators, probe suites, and final testing.
+- {doc}`Logging <logging>` - run naming, iteration timing, and scalar/console logging - `WandbNamer`, `IterationTimer`, `InformationWriter`, and the writer / storage / `comm_info` channels they use.
+- {doc}`Diagnostics <diagnostics>` - health monitors and runtime mutators - gradient norms, prototype usage, feature std, resources, parameter counts, plus weight-decay / dtype / annealing / profiling hooks.
+- {doc}`Evaluation <../evaluation/index>` - in-loop evaluators that write `current_metric_value`, SSL probe suites, and final held-out testing.
+- {doc}`Checkpointing <../checkpoints/saving_and_loading>` - `CheckpointLoader`, `CheckpointSaver`, `CheckpointSaverIteration` - when to save, fine-tune remapping, and `model_best.pth` selection.
+- {doc}`Hugging Face <../checkpoints/huggingface>` - the `PushToHub` hook for uploading exported weights to the Hub during training.
 
 ```{toctree}
 :hidden:

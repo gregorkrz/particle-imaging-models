@@ -1,17 +1,15 @@
 # Distributed training
 
 pimm is built so that **the same config and the same command** run on one GPU,
-many GPUs on one node, or many nodes — only the resource flags change. This page
-covers the parallelism strategies, how batch sizes and workers are split, and
-how exact resume survives a change in world size.
+many GPUs on one node, or many nodes - only the resource flags change.
 
-- **Single & multi-GPU** — `torchrun` under the hood — no Slurm needed for one node.
-- **Multi-node** — one Slurm task per node; `torchrun` fans out to the GPUs.
-- **DDP / FSDP2** — pick a strategy in the `parallel` config block.
+- **Single & multi-GPU** - `torchrun` under the hood - no Slurm needed for one node.
+- **Multi-node** - one Slurm task per node; `torchrun` fans out to the GPUs.
+- **DDP / FSDP2** - pick a strategy in the `parallel` config block.
 
 ## The model
 
-pimm uses `torchrun` exclusively — it is hardcoded in `scripts/train.sh`, and
+pimm uses `torchrun` exclusively - it is hardcoded in `scripts/train.sh`, and
 there is no `distributed.launcher` config key. The rule everywhere is **one
 process per GPU**:
 
@@ -23,12 +21,11 @@ torchrun│ rank0 rank1 rank2 r3 │ ... │ rank4 rank5 rank6 r7 │
         nproc-per-node = 4           nnodes = 2  ⇒  world_size = 8
 ```
 
-`setup_distributed()` (`pimm/utils/comm.py`) reads either `torchrun` variables
+pimm auto-detects either `torchrun` variables
 (`RANK`, `WORLD_SIZE`, `LOCAL_RANK`, ...) or Slurm variables (`SLURM_PROCID`,
 `SLURM_NTASKS`, ...), picks the CUDA device from the local rank, and initializes
-an NCCL process group. It also builds a per-node local process group so
-`get_local_rank()` / `get_local_size()` work. If no distributed environment is
-present, it logs that and runs single-process.
+an NCCL process group.
+If no distributed environment is present, it runs single-process.
 
 ## Local and multi-GPU
 
@@ -40,7 +37,7 @@ pimm launch \
   --resources.nproc-per-node 1
 ```
 
-Four GPUs on the current node — **no Slurm required**:
+Four GPUs on the current node - **no Slurm required**:
 
 ```bash
 pimm launch \
@@ -56,6 +53,10 @@ and `MASTER_PORT=29500`. Use `--dry-run` to see the exact `torchrun` line.
 Two ways: run `pimm launch` inside your own allocation, or use the managed
 submitit path with `pimm submit` (see {doc}`../hpc/index`).
 
+:::{note}
+`slurm` is the generic base profile; define a site profile for your own cluster - see {doc}`../hpc/sites`.
+:::
+
 ::::{tab-set}
 
 :::{tab-item} Managed (recommended)
@@ -66,6 +67,7 @@ pimm submit --site slurm \
   --resources.time 02:00:00 \
   --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
+
 :::
 
 :::{tab-item} Inside your own allocation
@@ -93,8 +95,7 @@ sh scripts/train.sh -m 2 -g 4 \
 :::{warning}
 **One Slurm task per node.** `torchrun` starts one process per GPU itself, so do
 not also wrap the launcher in `srun` with one task per GPU. The launcher renders
-`--ntasks-per-node=1` deliberately. S3DF-style sites use `--gres=gpu:<N>`; NERSC
-uses `--gpus-per-node=<N>`.
+`--ntasks-per-node=1` deliberately. Slurm clusters differ in how GPUs are requested - some use `--gres=gpu:<N>`, others `--gpus-per-node=<N>`; check your cluster's documentation.
 :::
 
 ## Global batch sizes split automatically
@@ -112,17 +113,17 @@ batch_size_test_per_gpu = batch_size_test // world_size  # or 1 if unset
 :::{important}
 The global `batch_size` (and val/test sizes, when set) **must divide the world
 size**. Because the global batch is fixed, the number of iterations per epoch is
-identical regardless of GPU count — which is exactly what makes resume across a
+identical regardless of GPU count - which is exactly what makes resume across a
 different world size safe (see below).
 :::
 
 Process RNG seeds are set to `seed + rank * num_worker_per_gpu`, with
-`deterministic` honored when requested.
+`deterministic` applied when requested.
 
 ## Parallel strategies
 
-`create_parallel_context(cfg)` reads the `cfg.parallel` block (falling back to
-`cfg.distributed`), defaulting to `ddp`. `prepare_model()` then wraps the model:
+The `parallel` block selects the strategy, defaulting to `ddp`, which wraps the model.
+Tensor and pipeline parallelism are not pimm concepts; only DDP and FSDP2 are supported.
 
 ```{list-table}
 :header-rows: 1
@@ -150,7 +151,7 @@ Example config blocks:
 
 :::{tab-item} DDP (default)
 ```python
-# Usually nothing to set — ddp is the default.
+# Usually nothing to set - ddp is the default.
 parallel = dict(strategy="ddp")
 find_unused_parameters = False   # set True only if your graph needs it
 sync_bn = False                  # converts BN → SyncBatchNorm when world_size>1
@@ -187,61 +188,23 @@ amp_dtype  = "bfloat16"   # the supported value in the engine
 ```
 
 With AMP on, the engine builds a `GradScaler` and skips the scheduler step when
-scaler overflow prevents an optimizer step. Device movement
-(`move_batch_to_device`) is recursive over dicts/lists/tuples with
-`non_blocking=True`, so datasets and collators stay CPU-side.
+scaler overflow prevents an optimizer step.
 
 ## Deterministic checkpointing & resume across world size
 
-This is the payoff of the design above. pimm checkpoints the **full** training
-state — model, optimizer, scheduler, AMP scaler, RNG (Python/NumPy/CPU/all
-CUDA), the stateful dataloader position, global step, and samples-seen — per
-rank.
+pimm checkpoints the **full** training state - model, optimizer, scheduler, AMP scaler, RNG (Python/NumPy/CPU/all CUDA), the stateful dataloader position, global step, and samples-seen - per rank.
 
 Because the default `standard` format stores the trainer state as a
 [Distributed Checkpoint (DCP)](https://pytorch.org/docs/stable/distributed.checkpoint.html),
-it **reshards automatically**: resume an 8-GPU run on 4 GPUs (or vice versa)
-with no extra flags. The model/optimizer/scheduler/step state reshard cleanly,
-and because the global batch size is fixed, iterations-per-epoch is identical.
+it **reshards automatically** - resume an 8-GPU run on 4 GPUs (or vice versa)
+by changing only the resource flag:
 
 ```bash
-# Started on 8 GPUs; resume on 4 — just change the resource flag.
 pimm submit --site slurm --resources.nnodes 1 --resources.nproc-per-node 4 \
   --train.config <cfg> --run.name <existing-run> --train.resume
 ```
 
-:::{note}
-Resume strictness is controlled by `resume_strict_state` (default `True`). In
-strict mode, distributed dataloader/RNG state saved under a *different*
-`world_size` raises rather than silently remapping. The reshardable DCP path is
-the supported way to change GPU count; see
-{doc}`../checkpoints/resuming` for the strict-mode escape hatch used by
-the legacy single-file format.
-:::
+See {doc}`../checkpoints/resuming` for how resharding works.
 
-Full details — formats, atomic publish, the `.complete` marker, mid-epoch
-semantics — are in {doc}`../checkpoints/index`.
-
-## What scales and what doesn't
-
-```{list-table}
-:header-rows: 1
-:widths: 40 60
-
-* - Resharded automatically (standard/DCP)
-  - Model, optimizer, scheduler, AMP scaler, global step, samples-seen,
-    best-metric, RNG
-* - Resharded with care
-  - Stateful dataloader position — restored exactly at the same world size;
-    across world sizes the DCP path handles it, strict mode guards mismatches
-* - Not a pimm concept
-  - Tensor/pipeline parallelism — pimm targets data parallelism (DDP) and
-    FSDP2 sharding for point-cloud models
-```
-
-## See also
-
-- {doc}`../hpc/index` — taking this to a real cluster.
-- {doc}`../checkpoints/index` — the checkpoint formats in depth.
-- {doc}`../configuration/index` — where `parallel`, `batch_size`, and
-  `find_unused_parameters` live.
+Full details - formats, atomic publish, the `.complete` marker, mid-epoch
+semantics - are in {doc}`../checkpoints/index`.

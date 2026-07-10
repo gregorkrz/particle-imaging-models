@@ -11,11 +11,11 @@ The evaluator hooks live under `pimm/engines/hooks/eval/` (task evaluators at
 the top level; pre-training probes under `eval/pretrain/`).
 
 :::{seealso}
-Evaluators are hooks — {doc}`../hooks/index` covers the lifecycle and the
+Evaluators are hooks - {doc}`../hooks/index` covers the lifecycle and the
 `comm_info` / `storage` / `writer` channels used throughout this page.
 :::
 
-## The selection-metric contract
+## The selection metric
 
 Every evaluator that can drive checkpoint selection writes two keys:
 
@@ -30,7 +30,7 @@ A {py:class}`~pimm.engines.hooks.checkpoint.CheckpointSaver` reads these *after*
 :::{important}
 **Order: evaluator before saver.** If the saver runs first it sees a stale (or
 missing) metric and never marks a best checkpoint. This is the single most
-common evaluation-config mistake — see {doc}`../checkpoints/saving_and_loading`.
+common evaluation-config mistake - see {doc}`../checkpoints/saving_and_loading`.
 :::
 
 ```text
@@ -51,10 +51,10 @@ Every evaluator takes `every_n_steps`, which selects when it fires:
 * - `every_n_steps`
   - Behavior
 * - `> 0`
-  - Runs from `after_step()` when the global step is divisible by the interval —
+  - Runs from `after_step()` when the global step is divisible by the interval -
     use this for long single-epoch / iteration-based runs.
 * - `0` (default)
-  - Runs from `after_epoch()` — one validation pass per epoch.
+  - Runs from `after_epoch()` - one validation pass per epoch.
 ```
 
 All evaluators are gated by `cfg.evaluate`: with `evaluate=False` the validation
@@ -89,19 +89,11 @@ and test loaders aren't even built, and the evaluators no-op. Most use
 
 A few specifics worth knowing:
 
-- **{py:class}`~pimm.engines.hooks.eval.semantic_segmentation.SemSegEvaluator`** is the standard segmentation validator; `write_cls_iou`
-  adds per-class IoU to the log. Its selection metric is **mIoU**.
 - **{py:class}`~pimm.engines.hooks.eval.instance_segmentation.InstanceSegmentationEvaluator`** requires **validation batch size 1**
-  (instance/ARI bookkeeping is per-event). It can emit momentum-regression
-  metrics and multiple label heads, setting the current metric for the primary
-  label. The `InsegTrainer` provides the matching instance collation.
+  (instance/ARI bookkeeping is per-event).
 - **`PretrainEvaluator`** extracts frozen point features via a backbone,
   `encode()`, or the `return_point=True` path, splits validation events into a
-  small probe train/test set, and trains a grid of linear classifiers
-  (`eval/pretrain/linear.py`). It stores **mF1**.
-- **{py:class}`~pimm.engines.hooks.eval.pretrain.mae.MAEEvaluator` / `HMAEEvaluator`** validate reconstruction and use
-  **negative validation loss** as the metric, because lower loss is better and
-  the saver always treats *higher = better*.
+  small probe train/test set, and trains a grid of linear classifiers.
 
 :::{seealso}
 What an evaluator reads from the model output dict (`seg_logits`, `point`,
@@ -120,17 +112,17 @@ about data leakage than task evaluators.
 A cheap, always-on probe that trains a detached classifier *during* training in
 `after_step()`.
 
-- Expects the model to expose `_probe_feat` and `_probe_segment_motif` on the
+- Requires the model to expose `_probe_feat` and `_probe_segment_motif` on the
   unwrapped model.
 - Lazily builds a `LayerNorm + Linear` head, trains it with its own AdamW, and
   logs accuracy, loss, and per-class / macro precision/recall/F1.
-- The probe lives **on the hook, not on `trainer.model`** — so the checkpoint
+- The probe lives **on the hook, not on `trainer.model`** - so the checkpoint
   payload does **not** save the probe weights or its optimizer. A resumed run
   re-grows the probe from scratch (fine for a diagnostic signal).
 
 ### EventLinearProbeEvaluator
 
-The LUCiD event-level probe — the trustworthy signal for water-Cherenkov SSL
+The LUCiD event-level probe - the trustworthy signal for water-Cherenkov SSL
 quality. It is deliberately conservative:
 
 - Runs on **rank 0** and synchronizes the other ranks around evaluation.
@@ -145,12 +137,10 @@ quality. It is deliberately conservative:
   matrix; uses **event-probe mF1** as the current metric.
 
 :::{warning}
-**Heldout means heldout.** A config shared between train and probe-eval must sit
+**The probe split must be truly held out.** A config shared between train and probe-eval must sit
 at the *same list index* in both, because LUCiD seeds its holdout by list
-position. A mismatch causes train/heldout leakage — and
+position. A mismatch causes train/heldout leakage - and
 {py:class}`~pimm.engines.hooks.eval.pretrain.lucid_event_probe.EventLinearProbeEvaluator` will raise rather than report an optimistic number.
-`tests/test_lucid_event_probe.py` covers the heldout guard, leakage rejection,
-and nested-subset event keys.
 :::
 
 ### EventProbeSuiteEvaluator
@@ -223,13 +213,6 @@ sh scripts/test.sh -c <config-path> -n <experiment-name> -w model_best
   - Python interpreter
 ```
 
-Under the hood the script sets
-`PYTHONPATH=./exp/<config-group>/<name>/code` and invokes:
-
-```bash
---options save_path=<exp-dir> weight=<exp-dir>/model/<weight>.pth
-```
-
 :::{note}
 `scripts/test.sh` parses `-g`/`-m` for symmetry with `train.sh` but does **not**
 wrap testing in `torchrun`; it runs a single process. The tester class itself is
@@ -238,6 +221,4 @@ chosen by `cfg.test.type`.
 
 ## Next
 
-- {doc}`../checkpoints/saving_and_loading` — savers and the `model_best.pth` selection logic.
-- {doc}`../research_ecosystem/contributing_a_hook` — write a custom evaluator that drives selection.
-- {doc}`../datasets/index` — the held-out split conventions probes depend on.
+- {doc}`../research_ecosystem/contributing_a_hook` - write a custom evaluator that drives selection.

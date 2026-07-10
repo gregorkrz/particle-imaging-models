@@ -1,4 +1,4 @@
-/* pimm docs — custom theming on top of the PyData Sphinx theme.
+/* pimm docs - custom theming on top of the PyData Sphinx theme.
    Palette draws from the LArTPC "active pixel" look of the logo:
    a deep neutrino blue/teal with an amber accent for the off-center vertex. */
 
@@ -37,7 +37,7 @@
    feels cramped for code blocks, tables, and the API reference. Widen the whole
    layout and let the article fill the space between the sidebars. */
 .bd-page-width {
-  max-width: 100rem;
+  max-width: none;
 }
 .bd-main .bd-content .bd-article-container {
   max-width: none;
@@ -58,7 +58,7 @@
   --pimm-ink: #0b1f33;
 }
 
-/* Cohesive pimm palette — everything interactive keys off ONE blue accent with
+/* Cohesive pimm palette - everything interactive keys off ONE blue accent with
    neutral support tones, so links, link-hover, inline code, and table-row hover
    read as a single theme (no blue/green/magenta mix). !important to win over the
    base theme stylesheet. */
@@ -91,7 +91,7 @@ html[data-theme="dark"] {
   letter-spacing: 0.5px;
 }
 
-/* Landing-page hero. Plain — no panel, no gradient. The `# heading` inside the
+/* Landing-page hero. Plain - no panel, no gradient. The `# heading` inside the
    div directive renders as <p class="rubric">, so style that as the title. */
 .pimm-hero {
   padding: 1.6rem 0 0.6rem;
@@ -105,9 +105,9 @@ html[data-theme="dark"] {
 }
 .pimm-hero .rubric {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 2.5rem;
-  line-height: 1.15;
-  font-weight: 500;          /* medium — not bold */
+  font-size: 2.0rem;
+  line-height: 1.0;
+  font-weight: 500;          /* medium - not bold */
   letter-spacing: -1px;
   margin: 0 0 0.5rem;
   color: var(--pst-color-text-base);
@@ -115,7 +115,7 @@ html[data-theme="dark"] {
 }
 .pimm-tagline {
   display: inline-block;
-  font-size: 1.28rem;
+  font-size: 1.0rem;
   line-height: 1.5;
   color: var(--pst-color-text-muted);
   max-width: 46rem;
@@ -153,10 +153,10 @@ html[data-theme="dark"] {
 /* Thin, unobtrusive scrollbar for the left section navigation. */
 .bd-sidebar-primary {
   scrollbar-width: thin;
-  scrollbar-color: var(--pst-color-border) transparent;
+  scrollbar-color: #FFFFFF transparent;
 }
 .bd-sidebar-primary::-webkit-scrollbar {
-  width: 6px;
+  width: 0px;
 }
 .bd-sidebar-primary::-webkit-scrollbar-thumb {
   background: var(--pst-color-border);
@@ -166,6 +166,31 @@ html[data-theme="dark"] {
   background: transparent;
 }
 
+/* Size the left sidebar to its content instead of a % of the viewport.
+   sphinx-book-theme defaults to flex-basis: 20%, which grows on wide screens
+   and made centered nav labels look odd. Cap so a long label cannot explode. */
+@media (min-width: 992px) {
+  .bd-sidebar-primary {
+    flex: 0 0 auto;
+    flex-basis: auto;
+    width: max-content;
+    max-width: 20rem;
+  }
+  /* book theme hides with margin-left: -20% of the container; match our cap. */
+  input#pst-primary-sidebar-checkbox:checked ~ .bd-container .bd-sidebar-primary {
+    margin-left: -20rem;
+  }
+}
+
+/* Center only the brand + icon-link row; leave the section tree left-aligned. */
+.bd-sidebar-primary .sidebar-primary-item:has(> .navbar-brand),
+.bd-sidebar-primary .sidebar-primary-item:has(> .navbar-icon-links) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+
 /* The registry tables generate their per-class pages via a hidden autosummary;
    only the Name/Summary table is shown. */
 .hidden-autosummary {
@@ -174,7 +199,7 @@ html[data-theme="dark"] {
 
 /* Code inside a link (cross-references like the registry Name column and
    {py:class}/{py:func} refs) should take the blue link color, not the neutral
-   inline-code slate — so all links read as one color. */
+   inline-code slate - so all links read as one color. */
 a.reference code,
 a.reference .pre,
 code.xref,

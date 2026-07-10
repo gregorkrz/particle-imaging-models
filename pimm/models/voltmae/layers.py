@@ -10,7 +10,6 @@ random patch-level masking, and the reconstruction head.
 from __future__ import annotations
 
 import math
-import flash_attn
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,6 +17,7 @@ from timm.layers import DropPath, Mlp
 from timm.models.vision_transformer import LayerScale
 
 from pimm.models.losses.chamfer import chamfer_distance
+from pimm.models.utils.attention import flash_attn_varlen_qkvpacked_func
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ class RoPE_Attention(nn.Module):
         qkv = torch.stack([q, k, v], dim=0).permute(2, 0, 1, 3)
 
         qkv_dtype = qkv.dtype
-        x = flash_attn.flash_attn_varlen_qkvpacked_func(
+        x = flash_attn_varlen_qkvpacked_func(
             qkv.half(),
             cu_seqlens,
             max_seqlen=max_seqlen,

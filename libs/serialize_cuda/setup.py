@@ -4,7 +4,7 @@ Vendored from https://github.com/ChristianSchott/point_serialization_cuda
 (commit ceebfd14814fb19d11bc622eb1375013362f6327). The upstream ``setup.py``
 hard-coded a single CUDA architecture (``sm_86``); this version instead
 auto-detects the visible GPUs and otherwise honors ``TORCH_CUDA_ARCH_LIST``,
-matching the other CUDA extensions under ``libs/`` so the container / conda
+matching the other CUDA extensions under ``libs/`` so the container and uv
 builds target every supported arch.
 """
 
@@ -44,7 +44,7 @@ NVCC_FLAGS = get_cuda_arch_flags() + ["-O3", "--use_fast_math"]
 
 setup(
     name="serialize_cuda",
-    version="0.1.0",
+    version="0.1.0+cu126torch2.13",
     ext_modules=[
         CUDAExtension(
             name="serialize_cuda",

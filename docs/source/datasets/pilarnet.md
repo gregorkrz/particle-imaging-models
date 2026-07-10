@@ -3,7 +3,7 @@
 [PILArNet-M](https://huggingface.co/datasets/DeepLearnPhysics/PILArNet-M) is the
 primary LArTPC point-cloud dataset in pimm: simulated liquid-argon detector
 events as 3D voxelized hits with energy and rich truth labels. The
-`PILArNetH5Dataset` class reads the HDF5 shards directly — no preprocessing into
+`PILArNetH5Dataset` class reads the HDF5 shards directly - no preprocessing into
 per-sample `.npy` assets is required.
 
 ## Download
@@ -55,8 +55,8 @@ DataLoader worker fork. The root is resolved in this order:
 :::{important}
 Resolution uses ordinary process environment variables, so the **launch path
 must export `PILARNET_DATA_ROOT_*` before training starts** (e.g. via `.env` or
-the launch YAML). `example.env` documents `_V1` and `_V2`; the code
-(`pilarnet.py`) also reads `_V3`.
+the launch YAML). `PILARNET_DATA_ROOT_V3` is also read, even though
+`example.env` only lists `_V1` and `_V2`.
 :::
 
 ## Revisions
@@ -65,7 +65,7 @@ the launch YAML). `example.env` documents `_V1` and `_V2`; the code
 
 :::{tab-item} v1
 The original PILArNet layout used by the **PoLAr-MAE** paper. Coordinates,
-energy, and motif segmentation labels — no PID / momentum / vertex truth. Use it
+energy, and motif segmentation labels - no PID / momentum / vertex truth. Use it
 to reproduce PoLAr-MAE results.
 :::
 
@@ -216,10 +216,3 @@ When overlay fires it:
    **track > shower > Michel > delta > low-energy deposit**.
 
 Overlay is an augmentation toggle; leave it off for clean evaluation.
-
-## See also
-
-- {doc}`transforms` — the {py:class}`~pimm.datasets.transform.spatial.NormalizeCoord` / `LogTransform` / {py:class}`~pimm.datasets.transform.spatial.GridSample`
-  pipeline these keys flow through.
-- {doc}`data_format` — how the per-event dicts become a batch.
-- {doc}`All registered datasets <../api/registry/datasets>` — other registered datasets, generated from the registry.

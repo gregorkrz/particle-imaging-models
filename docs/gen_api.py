@@ -192,7 +192,7 @@ def _load_registries():
     return [
         ("models", "Models", MODELS, "model = dict(type=...)",
          "Every model and backbone buildable from a ``model = dict(type=...)`` "
-         "config block. See :doc:`../../reference/model_zoo` for a curated guide."),
+         "config block."),
         ("datasets", "Datasets", DATASETS, "data.train = dict(type=...)",
          "Dataset classes buildable under ``data.train`` / ``data.val`` / "
          "``data.test``. See :doc:`../../datasets/index`."),
@@ -214,12 +214,12 @@ def _module_dict(reg):
 
 
 def _summary(obj) -> str:
-    doc = inspect.getdoc(obj) or ""
+    doc = obj.__doc__ or ""
     for line in doc.splitlines():
         line = line.strip()
         if line:
             return line
-    return "—"
+    return " - "
 
 
 def _qualpath(obj) -> str:
@@ -306,7 +306,7 @@ def write_registry_page(slug, title, reg, build_key, intro):
     lines += [
         f"Build any of these from a config with ``{build_key}``, using the "
         "``type`` string in the first column. **Generated from the live "
-        f"registry** — {len(rows)} classes ({n_names} names including aliases), "
+        f"registry** - {len(rows)} classes ({n_names} names including aliases), "
         "grouped by role.",
         "",
     ]
@@ -338,13 +338,13 @@ def write_index(items):
         "pimm assembles models, datasets, transforms, hooks, losses, and trainers",
         "from config dictionaries with a ``type`` key, resolved through small",
         "registries (see :doc:`../../getting_started/concepts`). These pages are",
-        "**generated from the live registries and the source docstrings** — each",
+        "**generated from the live registries and the source docstrings** - each",
         "lists every registered ``type``, grouped by role, and links to its autodoc",
         "page.",
         "",
     ]
     for slug, title, n in items:
-        lines += [f"- :doc:`{title} <{slug}>` — {n} registered entries."]
+        lines += [f"- :doc:`{title} <{slug}>` - {n} registered entries."]
     lines += ["", ".. toctree::", "   :hidden:", ""]
     for slug, _title, _n in items:
         lines += [f"   {slug}"]

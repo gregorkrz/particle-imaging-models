@@ -1,6 +1,6 @@
 # Resuming a run
 
-Resuming applies to **every** run, not just HPC jobs — a laptop run killed with
+Resuming applies to **every** run, not just HPC jobs - a laptop run killed with
 Ctrl-C resumes the same way a preempted Slurm job does. pimm distinguishes three
 things that are easy to conflate:
 
@@ -12,7 +12,7 @@ things that are easy to conflate:
   - What it restores
   - Use when
 * - **Resume**
-  - *Everything* — model, optimizer, scheduler, AMP scaler, RNG, dataloader
+  - *Everything* - model, optimizer, scheduler, AMP scaler, RNG, dataloader
     position, step, samples-seen, best-metric
   - Continuing the *same* run (e.g. after a crash or timeout)
 * - **Fine-tune**
@@ -43,7 +43,7 @@ Resume is **exact**. When `resume=True`,
 {py:class}`~pimm.engines.hooks.checkpoint.CheckpointLoader` restores model,
 optimizer, scheduler, AMP scaler, trainer progress (`start_epoch`, `start_iter`,
 `global_step`, `samples_seen`, `best_metric_value`), the stateful dataloader
-position, and RNG (Python / NumPy / CPU / all CUDA) — per rank. Combined with
+position, and RNG (Python / NumPy / CPU / all CUDA) - per rank. Combined with
 `seed` and `deterministic=True`, the continued trajectory matches what an
 uninterrupted run would have produced.
 
@@ -53,7 +53,7 @@ Two important details:
   (the resolved artifact), *not* the original file under `configs/`. Edits to the
   original config after the run started do **not** take effect on resume.
 - **It reuses the code snapshot.** The run continues from
-  `exp/<group>/<name>/code/`, the snapshot taken at first launch — so behavior is
+  `exp/<group>/<name>/code/`, the snapshot taken at first launch - so behavior is
   reproducible even if your working tree changed.
 
 The experiment directory must already exist; the launcher picks the newest
@@ -61,18 +61,15 @@ The experiment directory must already exist; the launcher picks the newest
 `model/model_last.pth`. If none is complete, it exits rather than silently
 restarting.
 
-### Mid-epoch resume
-
 If a checkpoint was saved mid-epoch and contains dataloader state, the loader
-restores that position and enumerates the loader with `start=start_iter` — you
+restores that position and enumerates the loader with `start=start_iter` - you
 continue from the exact batch. If the checkpoint is mid-epoch but lacks
 dataloader state (e.g. a legacy single-file checkpoint), the loader **warns and
 replays from the start of the saved epoch**.
 
 :::{note}
-`TrainState.from_trainer()` records the position *after* the just-completed
-batch, so a checkpoint taken after a step resumes after that step — not before
-it, and not duplicating it.
+A checkpoint taken after a step resumes after that step - it neither repeats
+nor skips the batch.
 :::
 
 ## Resume on a different number of GPUs
@@ -86,8 +83,8 @@ With the `standard`/DCP format (the default for multi-rank / requeued / FSDP2
 runs), just change the resource flag and resume:
 
 ```bash
-# Started on 8 GPUs; resume on 4 — no extra flags.
-pimm submit --site s3df \
+# Started on 8 GPUs; resume on 4 - no extra flags.
+pimm submit --site mycluster \
   --resources.nnodes 1 --resources.nproc-per-node 4 \
   --train.config <cfg> --run.name my-run --train.resume
 ```
@@ -95,12 +92,12 @@ pimm submit --site s3df \
 This works because:
 
 - The trainer state lives in a **Distributed Checkpoint** (`trainer.dcp/`), which
-  resharded reads/writes natively — model, optimizer, scheduler, step,
+  resharded reads/writes natively - model, optimizer, scheduler, step,
   samples-seen, and best-metric all redistribute cleanly.
 - The **global batch size is fixed**, so iterations-per-epoch is identical
   regardless of GPU count. Your schedule and accounting stay aligned.
 
-### Legacy format: the escape hatch
+### Legacy format
 
 The legacy single-file format does **not** reshard. Strict resume
 (`resume_strict_state=True`, the default) refuses to remap per-rank dataloader /
@@ -111,12 +108,8 @@ pimm launch --train.config <cfg> --run.name my-run --train.resume \
   -- resume_strict_state=False
 ```
 
-Concretely, `resume_strict_state=False` skips the `world_size` assertion on the
-saved distributed dataloader / RNG state and skips the dataloader cursor
-(torchdata asserts lazily on first `__iter__`). Model / optimizer / scheduler /
-step state reshard fine because they are not rank-partitioned in the single-file
-payload. This is safe specifically because the global batch size is fixed, so
-iters/epoch is identical — only the per-rank RNG/dataloader bookkeeping is being
+This is safe specifically because the global batch size is fixed, so
+iters/epoch is identical - only the per-rank RNG/dataloader bookkeeping is being
 relaxed.
 
 :::{warning}
@@ -151,7 +144,7 @@ checkpoint needs its `.complete` marker; an interrupted save leaves only the
 
 :::{dropdown} "My config change didn't take effect on resume"
 Resume uses the saved `exp/.../config.py`. To change behavior, either start a
-new run, or edit the saved artifact directly (advanced) — but prefer a new run
+new run, or edit the saved artifact directly (advanced) - but prefer a new run
 with a child config for anything you want to track.
 :::
 
@@ -166,10 +159,3 @@ Strict resume (`resume_strict_state=True`) refuses to remap per-rank
 dataloader/RNG state saved under a different world size. Use the DCP/standard
 format to reshard, or set `resume_strict_state=False` for the legacy format.
 :::
-
-## Next
-
-- {doc}`saving_and_loading` — the saver/loader hooks and fine-tune key remapping.
-- {doc}`index` — formats, atomicity, and the DCP layout.
-- {doc}`../hpc/resuming` — requeue chains and Slurm-specific resume.
-- {doc}`../distributed/index` — why a fixed global batch size makes resharding safe.

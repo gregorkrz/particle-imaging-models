@@ -71,9 +71,8 @@ class Container:
     repo_mount: str | None = "/opt/pimm/src"
     unset_env: list[str] = field(default_factory=list)
     setup: list[str] = field(default_factory=list)
-    # Absolute interpreter path inside the image (e.g. /opt/conda/bin/python).
-    # When set, used as `train.sh -p` so the image's python wins regardless of a
-    # host conda leak. None -> fall back to the runtime default / sys.executable.
+    # absolute interpreter path inside the image, such as /opt/pimm/.venv/bin/python
+    # when set, train.sh uses it instead of any interpreter inherited from the host
     interpreter: str | None = None
 
 

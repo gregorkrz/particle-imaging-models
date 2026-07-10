@@ -11,16 +11,88 @@ on:
       - 'v*'
     paths:
       - '.github/docker/**'
-      - 'libs/**'
+      - '.python-version'
+      - 'pimm/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - '.github/workflows/docker.yml'
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to build
+        required: true
+        default: main
+        type: string
+      tag:
+        description: Raw image tag
+        required: true
+        default: main
+        type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  lock:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+      - name: Verify dispatch inputs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          BUILD_REF: ${{ inputs.ref }}
+          IMAGE_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "dispatch the workflow itself at $BUILD_REF" >&2
+            exit 1
+          fi
+          case "$BUILD_REF" in
+            pimm-wheels-*)
+              echo "native wheel refs are not application image refs" >&2
+              exit 1
+              ;;
+          esac
+          if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "invalid Docker image tag: $IMAGE_TAG" >&2
+            exit 1
+          fi
+      - name: Plan build
+        id: plan
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          echo "build=true" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" != "push" ] || [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            exit 0
+          fi
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            exit 0
+          fi
+          old="$(git show "$BEFORE_SHA:pyproject.toml" | python -c \
+            'import sys, tomllib; print(tomllib.loads(sys.stdin.read())["project"]["version"])')"
+          new="$(python -c \
+            'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          if [ "$old" != "$new" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "the release workflow will dispatch the versioned image build"
+          fi
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: 0.11.28
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv lock --check
+
   build-standard:
+    needs: lock
+    if: needs.lock.outputs.build == 'true'
     uses: docker/github-builder/.github/workflows/build.yml@v1
     permissions:
       contents: read
@@ -28,7 +100,7 @@ jobs:
     with:
       output: image
       file: .github/docker/Dockerfile
-      push: ${{ github.event_name != 'pull_request' }}
+      push: ${{ github.repository == 'DeepLearnPhysics/particle-imaging-models' && github.event_name != 'pull_request' }}
       cache: true
       cache-mode: max
       cache-scope: standard
@@ -36,13 +108,13 @@ jobs:
       meta-tags: |
         type=ref,event=branch
         type=ref,event=pr
-        type=semver,pattern={{version}}
-        type=semver,pattern={{major}}.{{minor}}
-        type=raw,value=pytorch2.5.0-cuda12.4
+        type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+        type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+        type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+        type=raw,value=pytorch2.13.0-cuda12.6
       build-args: |
-        TORCH_VERSION=2.5.0
-        CUDA_VERSION=12.4
-        CUDA_VERSION_NO_DOT=124
+        TORCH_VERSION=2.13.0
+        CUDA_VERSION=12.6
         CUDNN_VERSION=9
         TORCH_CUDA_ARCH_LIST=8.0 8.6 8.9 9.0
     secrets:
@@ -53,6 +125,8 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
   build-nersc:
+    needs: lock
+    if: needs.lock.outputs.build == 'true'
     uses: docker/github-builder/.github/workflows/build.yml@v1
     permissions:
       contents: read
@@ -60,7 +134,7 @@ jobs:
     with:
       output: image
       file: .github/docker/Dockerfile.nersc
-      push: ${{ github.event_name != 'pull_request' }}
+      push: ${{ github.repository == 'DeepLearnPhysics/particle-imaging-models' && github.event_name != 'pull_request' }}
       cache: true
       cache-mode: max
       cache-scope: nersc
@@ -68,13 +142,13 @@ jobs:
       meta-tags: |
         type=ref,event=branch
         type=ref,event=pr
-        type=semver,pattern={{version}}
-        type=semver,pattern={{major}}.{{minor}}
-        type=raw,value=pytorch2.5.0-cuda12.4
+        type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+        type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+        type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+        type=raw,value=pytorch2.13.0-cuda12.6
       build-args: |
-        TORCH_VERSION=2.5.0
-        CUDA_VERSION=12.4
-        CUDA_VERSION_NO_DOT=124
+        TORCH_VERSION=2.13.0
+        CUDA_VERSION=12.6
         CUDNN_VERSION=9
         TORCH_CUDA_ARCH_LIST=8.0 8.6 8.9 9.0
     secrets:

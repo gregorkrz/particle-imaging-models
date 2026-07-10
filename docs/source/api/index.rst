@@ -13,12 +13,12 @@ through small registries (see :doc:`../getting_started/concepts`). Each page
 below is generated from the live registry, grouped by role, and lists every
 registered ``type`` with a link to its autodoc page.
 
-- :doc:`Models <registry/models>` — models & backbones
-- :doc:`Datasets <registry/datasets>` — dataset classes
-- :doc:`Transforms <registry/transforms>` — transform pipeline steps.
-- :doc:`Hooks <registry/hooks>` — training lifecycle hooks
-- :doc:`Losses <registry/losses>` — loss functions for ``build_criteria``
-- :doc:`Trainers <registry/trainers>` — trainer classes
+- :doc:`Models <registry/models>` - models & backbones
+- :doc:`Datasets <registry/datasets>` - dataset classes
+- :doc:`Transforms <registry/transforms>` - transform pipeline steps.
+- :doc:`Hooks <registry/hooks>` - training lifecycle hooks
+- :doc:`Losses <registry/losses>` - loss functions for ``build_criteria``
+- :doc:`Trainers <registry/trainers>` - trainer classes
 
 Core API
 ========
@@ -26,10 +26,10 @@ Core API
 Some important functions and classes that are not built from a
 registry.
 
-- :doc:`Loading & export <loading>` — :func:`~pimm.from_pretrained`,
+- :doc:`Loading & export <loading>` - :func:`~pimm.from_pretrained`,
   :func:`~pimm.save_pretrained`, :func:`~pimm.push_to_hub`, and the state-dict
   helpers.
-- :doc:`Core building blocks <core>` — builders, the ``Point`` structure, the
+- :doc:`Core building blocks <core>` - builders, the ``Point`` structure, the
   ``Config`` loader, the ``Registry``, and the checkpoint/resume primitives.
 
 .. toctree::

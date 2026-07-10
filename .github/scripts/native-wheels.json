@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "repository": "DeepLearnPhysics/particle-imaging-models",
+  "stacks": [
+    {
+      "id": "cu126-torch2.13-cp310",
+      "python": "3.10",
+      "python_tag": "cp310",
+      "torch": "2.13.0+cu126",
+      "cuda": "12.6",
+      "cuda_tag": "cu126",
+      "arches": [
+        "8.0",
+        "8.6",
+        "8.9",
+        "9.0"
+      ],
+      "build_image": "pytorch/manylinux2_28-builder:cuda12.6-v2.13.0-rc15",
+      "release_tag": "pimm-wheels-cu126-torch2.13-cp310",
+      "packages": [
+        {
+          "path": "libs/cnms",
+          "base_version": "2.0.0",
+          "distribution": "cnms",
+          "import_name": "cnms"
+        },
+        {
+          "path": "libs/pointgroup_ops",
+          "base_version": "0.0.0",
+          "distribution": "pointgroup-ops",
+          "import_name": "pointgroup_ops"
+        },
+        {
+          "path": "libs/pointops",
+          "base_version": "1.0.0",
+          "distribution": "pointops",
+          "import_name": "pointops"
+        },
+        {
+          "path": "libs/pointrope",
+          "base_version": "0.1.0",
+          "distribution": "pointrope",
+          "import_name": "pointrope"
+        },
+        {
+          "path": "libs/pytorch3d_ops",
+          "base_version": "0.7.9",
+          "distribution": "pytorch3d-ops",
+          "import_name": "pytorch3d_ops"
+        },
+        {
+          "path": "libs/serialize_cuda",
+          "base_version": "0.1.0",
+          "distribution": "serialize-cuda",
+          "import_name": "serialize_cuda"
+        },
+        {
+          "requirement": "torch-scatter==2.1.2",
+          "distribution": "torch-scatter",
+          "import_name": "torch_scatter"
+        },
+        {
+          "requirement": "torch-sparse==0.6.18",
+          "distribution": "torch-sparse",
+          "import_name": "torch_sparse"
+        },
+        {
+          "requirement": "torch-cluster==1.6.3",
+          "distribution": "torch-cluster",
+          "import_name": "torch_cluster"
+        }
+      ]
+    }
+  ]
+}

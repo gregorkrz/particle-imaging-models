@@ -41,62 +41,80 @@ We are looking at including the following models/modalities in the future:
 - [ ] 2D TPC waveforms/networks, e.g., [NuGraph](https://arxiv.org/abs/2403.11872)
 - [ ] Optical waveforms
 
-## Quick Start
+## Setup
 
-All three paths below share one source of truth for dependencies:
-`.github/docker/common/versions.sh` (pins) + `.github/docker/requirements/*` + the
-`.github/docker/common/install_*.sh` scripts. The image and the conda env therefore
-resolve to the same torch/CUDA/extension build.
+### Prerequisites
+
+Linux x86_64 and an NVIDIA GPU with a recent driver. The training stack
+(PyTorch and the native extensions) installs as prebuilt CUDA 12.6 wheels,
+so no CUDA toolkit or host compiler is required. Flash attention kernels
+ship inside PyTorch, so no separate flash-attn package is needed.
+
+### Quick setup
+
+Set up pimm with one command:
 
 ```bash
-git clone https://github.com/deeplearnphysics/particle-imaging-models.git
+curl -sSL https://raw.githubusercontent.com/DeepLearnPhysics/particle-imaging-models/main/install.sh | bash
+```
+
+It installs uv, clones the repo, and syncs the locked environment.
+
+Run everything through `uv run` (no need to activate the environment):
+
+```bash
+uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
+  -- epoch=1 data.train.max_len=32 data.val.max_len=16 batch_size=4 num_worker=0 use_wandb=False
+```
+
+`pimm launch`, `pimm submit`, and `pimm export` are the three commands; each is
+also reachable as `uv run python -m pimm.cli <cmd>`.
+
+<details>
+<summary>Manual install</summary>
+
+```bash
+git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
 cd particle-imaging-models
+
+./install.sh                    # full GPU environment
+./install.sh --launcher-only    # pimm launch/submit without training packages
 ```
 
-#### Option A — pull the prebuilt image (recommended)
+`install.sh` installs uv if missing, validates the system dependencies, and
+creates `.venv` from `uv.lock`. Set `SKIP_CLONE=1` to install into the current
+directory, or `PIMM_REPO` / `PIMM_BRANCH` to target a fork or branch.
+</details>
+
+<details>
+<summary>Container (Docker / Apptainer)</summary>
+
+Prebuilt images resolve from the same `uv.lock` as the local install.
 
 ```bash
-apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
+apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.13.0-cuda12.6
 ```
 
-The image installs `pimm` editable at `/opt/pimm/src`; bind your clone over that
-path so the `pimm` command imports your code, not the baked-in copy.
-
-#### Option B — build the image
+The image installs `pimm` at `/opt/pimm/src` with its environment at
+`/opt/pimm/.venv`; bind your clone over `/opt/pimm/src` so commands import your
+code, not the baked-in copy. Build it yourself with:
 
 ```bash
 docker build -f .github/docker/Dockerfile -t pimm:local .   # or Dockerfile.nersc on Perlmutter
 ```
 
-#### Option C — local conda env (no container)
-
-`install.sh` creates a conda env using the same scripts the image build uses:
-
-```bash
-./install.sh                 # GPU env, builds flash-attn (matches the image)
-./install.sh --no-flash      # skip flash-attn (slow build; set enable_flash=False in configs)
-./install.sh --cpu           # CPU-only: skip CUDA wheels/extensions
-conda activate pimm-torch2.5.0-cu12.4
-```
-
-It provisions the CUDA toolchain (nvcc + compilers) via conda, then installs
-torch, the python deps, the PyG/spconv wheels, the local CUDA extensions, and
-`pimm -e .`. Override pins (e.g. `TORCH_CUDA_ARCH_LIST` for your GPUs) by
-exporting them before running, or edit `.github/docker/common/versions.sh`.
-
-#### Smoke test
-
-```bash
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
-  -- epoch=1 data.train.max_len=32 data.val.max_len=16 batch_size=4 num_worker=0 use_wandb=False
-```
+| Image | Description |
+|-------|-------------|
+| `youngsm/pimm:pytorch2.13.0-cuda12.6` | Standard image |
+| `youngsm/pimm-nersc:pytorch2.13.0-cuda12.6` | NERSC variant with extra dependencies |
+</details>
 
 ## Training & Testing
 
 The primary entry point on local GPU(s) is `pimm launch`:
 
 ```bash
-pimm launch --train.config <config-path> [-- TRAIN_OVERRIDES...]
+uv run pimm launch --train.config <config-path> [-- TRAIN_OVERRIDES...]
 ```
 
 The launcher invokes `scripts/train.sh`, which prepares experiment paths, code
@@ -117,16 +135,16 @@ Useful flags:
 
 ```bash
 # Override config values
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py \
+uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py \
   -- epoch=10 data.train.max_len=1000
 
 # Fine-tune from pre-trained checkpoint
-pimm launch --resources.nproc-per-node 4 \
+uv run pimm launch --resources.nproc-per-node 4 \
   --train.config panda/semseg/semseg-pt-v3m2-pilarnet-ft-5cls-lin \
   --train.weight /path/to/checkpoint.pth
 
 # Resume
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py \
+uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py \
   --run.name my_experiment --train.resume
 ```
 
@@ -145,7 +163,7 @@ You can either run `pimm launch` inside your own Slurm script or use the
 managed submitit path:
 
 ```bash
-pimm submit --site s3df \
+uv run pimm submit --site s3df \
   --resources.nnodes 2 \
   --resources.nproc-per-node 4 \
   --resources.time 02:00:00 \
@@ -165,7 +183,7 @@ If you just made a normal Python config and want to submit it with site
 defaults:
 
 ```bash
-pimm submit --site s3df \
+uv run pimm submit --site s3df \
   --resources.nnodes 1 \          # 1 node
   --resources.nproc-per-node 4 \  # 4 gpus/node
   --resources.time 00:30:00 \
@@ -176,21 +194,21 @@ For a saved run recipe with launch-time state such as checkpoint weights,
 resource overrides, or W&B naming:
 
 ```bash
-pimm submit --site s3df --recipe launch/runs/e050_tail.yaml --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py
-pimm submit --site nersc --recipe launch/runs/e050_tail.yaml --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py
+uv run pimm submit --site s3df --recipe launch/runs/e050_tail.yaml --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py
+uv run pimm submit --site nersc --recipe launch/runs/e050_tail.yaml --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py
 ```
 
 Always dry-run first when changing sites or resources:
 
 ```bash
-pimm submit --dry-run --site s3df \
+uv run pimm submit --dry-run --site s3df \
   --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py
 ```
 
 To run directly on the current node without Slurm:
 
 ```bash
-pimm launch \
+uv run pimm launch \
   --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py \
   --resources.nproc-per-node 4
 ```
@@ -198,11 +216,11 @@ pimm launch \
 Slurm submission uses [submitit](https://github.com/facebookincubator/submitit). See `launch/README.md` for the YAML layer details and
 override syntax.
 
-Because `pimm` is a console-script entry point, every login/submit host where
-you type `pimm launch` or `pimm submit` needs the checkout installed in the
-active environment with `pip install -e .`. Containerized jobs additionally bind
-`paths.repo_root` over `/opt/pimm/src` by default so the in-image editable install
-also resolves to the same checkout.
+Every login or submit host where you invoke `pimm launch` or `pimm submit` needs
+the launcher dependencies.
+Run `./install.sh --launcher-only`, then use `uv run pimm submit ...`.
+Containerized jobs bind `paths.repo_root` over `/opt/pimm/src` by default, while
+the image environment remains at `/opt/pimm/.venv`.
 
 ## Exporting models
 
@@ -210,7 +228,7 @@ Export a training checkpoint to a portable pretrained directory for fine-tuning
 or Hugging Face upload:
 
 ```bash
-pimm export --run-dir exp/panda/pretrain/my_run last ./artifacts/my-model
+uv run pimm export --run-dir exp/panda/pretrain/my_run last ./artifacts/my-model
 ```
 
 This supports split checkpoint directories such as `model/last` and legacy
@@ -240,7 +258,7 @@ You can modify configs in two ways:
 1. Edit the config file directly
 2. Override via command line after `--`:
    ```bash
-   pimm launch --train.config panda/pretrain/x -- epoch=50 data.train.max_len=500000
+   uv run pimm launch --train.config panda/pretrain/x -- epoch=50 data.train.max_len=500000
    ```
 
 Example configs can be found in:
@@ -255,7 +273,7 @@ Example configs can be found in:
 Download the 168GB dataset from Hugging Face:
 
 ```bash
-python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dir
+uv run python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dir
 ```
 
 Data saves to `~/.cache/pimm/pilarnet/v2` if `--output-dir` is not provided. After downloading the dataset, run `cp example.env .env` and set `PILARNET_DATA_ROOT_V2`. This will allow the dataloader to automatically find the data.
@@ -293,19 +311,6 @@ This library works with packed data, where all batched quantities are in two dim
     </picture><br>
 </p>
 
-### Docker / Apptainer
-
-Pre-built images are available on Docker Hub:
-
-| Image | Description |
-|-------|-------------|
-| `youngsm/pimm:pytorch2.5.0-cuda12.4` | Standard image |
-| `youngsm/pimm-nersc:pytorch2.5.0-cuda12.4` | NERSC variant with extra dependencies |
-
-```bash
-apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
-```
-
 ## Model Zoo
 
 ### Model Versioning
@@ -337,7 +342,7 @@ supplied from the launcher:
 
 ```bash
 export WANDB_API_KEY=...
-pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py \
+uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask.py \
   --run.name test \
   --run.wandb-name test-display \
   --run.wandb-project Pretraining-Sonata-PILArNet-M
@@ -385,7 +390,7 @@ reshard across world sizes (resume on a different GPU count needs
 `resume_strict_state=False`). You can set this with:
 
 ```bash
-pimm launch --train.config <config> --run.name <name> -- checkpoint_format=legacy
+uv run pimm launch --train.config <config> --run.name <name> -- checkpoint_format=legacy
 ```
 
 ## Acknowledgements

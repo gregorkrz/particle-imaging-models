@@ -20,16 +20,11 @@
 # /latest/ + per-version slots later means merging previous content into the
 # single artifact — see docs/DEPLOYMENT.md.
 #
-# Build-environment note: `make -C docs html` runs gen_api.py AND sphinx-autodoc,
-# both of which `import pimm` -> which hard-imports `spconv.pytorch` (and a few
-# models hard-import `flash_attn`). A vanilla CPU runner has none of that, so we
-# build INSIDE the project Docker image, which already ships the full stack.
-#
-# The image is multi-GB; GitHub-hosted runners only have ~14 GB free by default,
-# so the build job FREES DISK before pulling it and runs the image via
-# `docker run` (a `container:` job can't free space first — it pulls the image
-# before any step runs). The whole workflow is also gated to the canonical
-# public repo, so it never runs on the private working repo or forks.
+# Build-environment note: `make -C docs html` runs gen_api.py and sphinx-autodoc,
+# both of which import the full training stack. Prebuilt native wheels let the
+# locked uv environment install and run directly on the CPU runner, so the docs
+# build no longer needs the CUDA image. The workflow is gated to the canonical
+# public repo.
 # =============================================================================
 
 name: Docs
@@ -43,6 +38,7 @@ on:
     paths:
       - 'docs/**'
       - 'pimm/**'
+      - 'uv.lock'
       - 'pyproject.toml'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
@@ -61,8 +57,7 @@ concurrency:
 
 jobs:
   build:
-    # Only the canonical public repo builds/publishes — never the private working
-    # repo or forks (this is also why the heavy image pull should not run there).
+    # only the canonical public repo publishes, never the private working repo or forks
     if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
     runs-on: ubuntu-latest
     steps:
@@ -71,28 +66,18 @@ jobs:
         with:
           fetch-depth: 0      # tags + history (autodoc/version niceties)
 
-      # Reclaim ~20-30 GB so the multi-GB CUDA image fits. Must happen BEFORE the
-      # image is pulled, which is why this job uses `docker run` rather than a
-      # `container:` job (the latter pulls the image before any step runs).
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
-                      "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
-          sudo docker image prune -af || true
-          df -h /
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: 0.11.28
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
-      # Build inside the project image (has torch/spconv/flash_attn/pimm). The
-      # image's default Python resolves `pimm`; we reinstall the checkout (no
-      # deps) so autodoc/gen_api document THIS commit, then add the Sphinx deps.
-      - name: Build the docs inside the project image
-        run: |
-          docker run --rm -v "$PWD":/work -w /work \
-            youngsm/pimm:pytorch2.5.0-cuda12.4 \
-            bash -lc "pip install -e . --no-deps \
-                      && pip install -r docs/requirements.txt \
-                      && make -C docs html"
-          sudo chown -R "$(id -u):$(id -g)" docs/build
+      - name: Synchronize the locked docs environment
+        run: uv sync --locked --group docs
+
+      - name: Build the docs
+        run: uv run --no-sync make -C docs html
 
       # Assemble the Pages artifact: site under /stable/, plus a root redirect so
       # /particle-imaging-models/ lands on /particle-imaging-models/stable/.

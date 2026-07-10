@@ -1,7 +1,7 @@
 # Chaining, walltime & QOS
 
 Most HPC queues cap walltime well below the time a foundation-model run needs.
-pimm's answer is **requeue chaining**: submit one job that automatically
+pimm handles this with **requeue chaining**: submit one job that automatically
 requeues and resumes from the latest checkpoint when it times out.
 
 ## How chaining works
@@ -20,13 +20,13 @@ requeues and resumes from the latest checkpoint when it times out.
 ```
 
 ```bash
-pimm submit --site s3df --recipe launch/runs/e050_tail.yaml \
+pimm submit --site mycluster --recipe launch/runs/e050_tail.yaml \
   --chain.jobs 4 \
   --run.name e050-tail-chain \
   --resources.time 02:00:00
 ```
 
-Behavior (`build_attempts` in `pimm/launch/submit.py`):
+Behavior:
 
 - All attempts share the **same experiment name and directory**.
 - Attempt 1 starts normally unless resume is requested; attempts 2+ resume
@@ -34,40 +34,33 @@ Behavior (`build_attempts` in `pimm/launch/submit.py`):
 - W&B runs are named `<base>-job0001`, `<base>-job0002`, … and grouping fields
   (`wandb_group`, `wandb_job_type`, `wandb_job_index`, `chain_jobs`) are threaded
   through as training overrides.
-- The `Chain` dataclass has only `jobs`, `resume_first`, `wandb_group`, and
-  `wandb_job_type`.
+- The chain settings are `--chain.jobs`, `--chain.resume-first`,
+  `--chain.wandb-group`, and `--chain.wandb-job-type`.
+- Use `--chain.resume-first` to start a *new* chain that resumes an
+  already-started experiment from its first attempt:
+
+  ```bash
+  pimm submit --site mycluster --recipe launch/runs/e050_tail.yaml \
+    --chain.jobs 3 --run.name existing-run --chain.resume-first
+  ```
 
 :::{important}
 This is **submitit requeue, not a Slurm dependency chain**. There is no
 `afterany`/`afterok` chain and no `chain.dependency` setting. Chaining is
-batch-only (`pimm submit`) — `--interactive` with `chain.jobs > 1` is rejected.
-:::
-
-### Resuming an existing experiment as a fresh chain
-
-Use `chain.resume_first` when you start a *new* chain that should resume an
-already-started experiment from its first attempt:
-
-```bash
-pimm submit --site s3df --recipe launch/runs/e050_tail.yaml \
-  --chain.jobs 3 --run.name existing-run --chain.resume-first
-```
-
-### `slurm.dependency` is separate
-
+batch-only (`pimm submit`) - `--interactive` with `chain.jobs > 1` is rejected.
 `slurm.dependency` is a single pass-through value handed to submitit's
-`slurm_dependency`; it is **not** chain-managed. Use it for one-off
-"start after job X" ordering, not for walltime chaining.
+`slurm_dependency` for one-off "start after job X" ordering; it is **not**
+chain-managed.
+:::
 
 ## Walltime
 
 Set per-attempt walltime with `--resources.time HH:MM:SS`. Pick a value the
 queue schedules quickly, then use `--chain.jobs` to reach the total training
-budget. A 4×2h chain trains for ~8h of wall time but only ever asks the
-scheduler for 2h slots.
+budget. A 4×2h chain trains for ~8h of wall time but only ever requests 2h slots from the scheduler.
 
 :::{tip}
-Checkpoint cadence and walltime should be friends. With short attempts, make
+With short attempts, make
 sure `CheckpointSaverIteration.save_freq` is small enough that an attempt always
 leaves a recent complete checkpoint before it times out. See
 {doc}`../checkpoints/index`.
@@ -75,40 +68,13 @@ leaves a recent complete checkpoint before it times out. See
 
 ## QOS, accounts, and partitions
 
-These are site fields you override per invocation:
-
-```{list-table}
-:header-rows: 1
-:widths: 30 30 40
-
-* - Setting
-  - Flag
-  - Notes
-* - QOS
-  - `--slurm.qos QOS`
-  - e.g. NERSC `regular`, `interactive`, `shared_interactive`
-* - Account
-  - `--slurm.account ACCT`
-  - S3DF default `mli:nu-ml-dev`; NERSC default `m5238_g`
-* - Partition
-  - `--slurm.partition PART`
-  - S3DF default `ampere`
-* - Constraint
-  - site YAML (`constraint`)
-  - NERSC default `gpu`
-```
-
-```bash
-pimm submit --site nersc \
-  --slurm.qos regular \
-  --slurm.account m5238_g \
-  --resources.nnodes 4 --resources.nproc-per-node 4 --resources.time 02:00:00 \
-  --recipe launch/runs/e050_tail.yaml --dry-run
-```
+QOS, account, partition, and constraint are site fields you override per
+invocation.
+Set stable values in your site YAML and override per run on the command line.
 
 :::{warning}
-QOS is `slurm.qos`, **not** a resources field. For the NERSC interactive queue,
-pass `--slurm.qos interactive` (or `shared_interactive`). Always confirm the
+QOS is `slurm.qos`, **not** a resources field. For interactive queues, pass
+your cluster's interactive QOS via `--slurm.qos`. Always confirm the
 rendered `slurm_qos`/`slurm_account` in the `--dry-run` manifest before
 submitting.
 :::
@@ -123,14 +89,9 @@ reshardable DCP/standard format when the run is multi-rank, requeued
 To force the legacy single-file backend (rarely needed):
 
 ```bash
-pimm submit --site s3df --train.config <cfg> \
+pimm submit --site mycluster --train.config <cfg> \
   -- hooks.CheckpointSaverIteration.backend=torch
 ```
 
 See {doc}`resuming` for the resume mechanics and {doc}`../checkpoints/index` for
 the formats.
-
-## Next
-
-- {doc}`monitoring` — watch the chain progress.
-- {doc}`resuming` — resume a submitted run; {doc}`../checkpoints/resuming` for what's restored.

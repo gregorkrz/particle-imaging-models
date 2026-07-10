@@ -17,12 +17,12 @@ if torch.cuda.is_available():
             f"-gencode=arch=compute_{arch_num},code=compute_{arch_num}"
         ])
 
-CXX_FLAGS = ["-O3", "-march=native", "-ffast-math", "-ftree-vectorize"]
+CXX_FLAGS = ["-O3", "-ffast-math", "-ftree-vectorize"]
 NVCC_FLAGS = ["-O3", "--use_fast_math"]
 
 setup(
     name="cnms",
-    version="2.0.0",
+    version="2.0.0+cu126torch2.13",
     packages=find_packages(),
     ext_modules=[
         CUDAExtension(
