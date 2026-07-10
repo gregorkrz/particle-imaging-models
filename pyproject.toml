@@ -14,7 +14,7 @@ dependencies = [
     "yapf",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 train = [
     "cmake; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "h5py; sys_platform == 'linux' and platform_machine == 'x86_64'",
@@ -50,8 +50,6 @@ train = [
 flash-attn = [
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.5.4/flash_attn-2.8.3%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
-
-[dependency-groups]
 dev = [
     "black",
     "jupyterlab",
@@ -81,7 +79,7 @@ include = ["pimm*"]
 
 [tool.uv]
 required-version = ">=0.11.1"
-default-groups = []
+default-groups = ["train", "flash-attn"]
 concurrent-builds = 1
 cache-keys = [
     { file = "pyproject.toml" },
@@ -98,38 +96,12 @@ torchvision = { index = "pytorch-cu124" }
 torch-scatter = { index = "pyg-cu124" }
 torch-sparse = { index = "pyg-cu124" }
 torch-cluster = { index = "pyg-cu124" }
-pointrope = { path = "libs/pointrope" }
-pointops = { path = "libs/pointops" }
-pointgroup-ops = { path = "libs/pointgroup_ops" }
-cnms = { path = "libs/cnms" }
-pytorch3d-ops = { path = "libs/pytorch3d_ops" }
-serialize-cuda = { path = "libs/serialize_cuda" }
-
-[tool.uv.extra-build-dependencies]
-pointrope = [
-    { requirement = "torch", match-runtime = true },
-    "ninja",
-]
-pointops = [
-    { requirement = "torch", match-runtime = true },
-    "ninja",
-]
-pointgroup-ops = [
-    { requirement = "torch", match-runtime = true },
-    "ninja",
-]
-cnms = [
-    { requirement = "torch", match-runtime = true },
-    "ninja",
-]
-pytorch3d-ops = [
-    { requirement = "torch", match-runtime = true },
-    "ninja",
-]
-serialize-cuda = [
-    { requirement = "torch", match-runtime = true },
-    "ninja",
-]
+pointrope = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointrope-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
+pointops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointops-1.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
+pointgroup-ops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointgroup_ops-0.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
+cnms = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/cnms-2.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
+pytorch3d-ops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pytorch3d_ops-0.7.9%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
+serialize-cuda = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/serialize_cuda-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
 
 [[tool.uv.index]]
 name = "pytorch-cu124"
@@ -141,3 +113,14 @@ name = "pyg-cu124"
 url = "https://data.pyg.org/whl/torch-2.5.0+cu124.html"
 format = "flat"
 explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+addopts = "-ra"
+markers = [
+    "gpu: requires a CUDA-capable GPU and CUDA runtime",
+    "external_data: requires data outside the source checkout",
+    "external_model: downloads a model from an external registry",
+    "cluster: requires a managed cluster or scheduler environment",
+    "distributed: requires at least two GPUs for multi-rank training",
+]

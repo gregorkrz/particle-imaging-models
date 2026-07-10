@@ -14,7 +14,7 @@ See `.github/workflows/docs.yml` for the CI build.
 ## Build
 
 ```bash
-uv sync --all-extras --group docs --locked
+uv sync --locked --group docs
 uv run --group docs make -C docs html
 ```
 

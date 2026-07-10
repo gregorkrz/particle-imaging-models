@@ -7,6 +7,6 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update --no-install-recommends
 apt-get install -y --no-install-recommends \
   git wget tmux vim zsh build-essential cmake ninja-build \
-  libopenblas-dev libsparsehash-dev "$@"
+  libopenblas-dev "$@"
 apt-get autoremove -y && apt-get clean -y
 rm -rf /var/lib/apt/lists/*

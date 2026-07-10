@@ -336,9 +336,12 @@ wheels = [
 [[package]]
 name = "cnms"
 version = "2.0.0+cu124torch2.5"
-source = { directory = "libs/cnms" }
+source = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/cnms-2.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
 dependencies = [
     { name = "torch" },
+]
+wheels = [
+    { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/cnms-2.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl", hash = "sha256:98aa2b4a543424bd09e3990aeeff6d5d1f6fc7bfd9cbdd03ea452e468c27e606" },
 ]
 
 [package.metadata]
@@ -1533,9 +1536,29 @@ dependencies = [
     { name = "yapf" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
+dev = [
+    { name = "black" },
+    { name = "jupyterlab" },
+    { name = "pytest" },
+]
+docs = [
+    { name = "linkify-it-py" },
+    { name = "myst-parser" },
+    { name = "pydata-sphinx-theme" },
+    { name = "sphinx" },
+    { name = "sphinx-book-theme" },
+    { name = "sphinx-copybutton" },
+    { name = "sphinx-design" },
+    { name = "sphinx-sitemap" },
+    { name = "sphinx-togglebutton" },
+]
 flash-attn = [
     { name = "flash-attn", marker = "sys_platform == 'linux'" },
+]
+nersc = [
+    { name = "cython" },
+    { name = "mpi4py" },
 ]
 train = [
     { name = "cmake", marker = "sys_platform == 'linux'" },
@@ -1570,68 +1593,14 @@ train = [
     { name = "wandb", marker = "sys_platform == 'linux'" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "black" },
-    { name = "jupyterlab" },
-    { name = "pytest" },
-]
-docs = [
-    { name = "linkify-it-py" },
-    { name = "myst-parser" },
-    { name = "pydata-sphinx-theme" },
-    { name = "sphinx" },
-    { name = "sphinx-book-theme" },
-    { name = "sphinx-copybutton" },
-    { name = "sphinx-design" },
-    { name = "sphinx-sitemap" },
-    { name = "sphinx-togglebutton" },
-]
-nersc = [
-    { name = "cython" },
-    { name = "mpi4py" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "addict" },
-    { name = "cmake", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "cnms", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", directory = "libs/cnms" },
-    { name = "einops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "flash-attn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'flash-attn'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.5.4/flash_attn-2.8.3%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" },
-    { name = "h5py", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "huggingface-hub", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "matplotlib", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "ninja", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "nvidia-ml-py", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "pandas", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "pointgroup-ops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", directory = "libs/pointgroup_ops" },
-    { name = "pointops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", directory = "libs/pointops" },
-    { name = "pointrope", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", directory = "libs/pointrope" },
-    { name = "pytorch3d-ops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", directory = "libs/pytorch3d_ops" },
     { name = "pyyaml" },
-    { name = "regex", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "rich", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "safetensors", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "scikit-learn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "serialize-cuda", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", directory = "libs/serialize_cuda" },
-    { name = "spconv-cu124", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
     { name = "submitit" },
-    { name = "tensorboardx", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "termcolor", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "timm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", specifier = "==2.5.0", index = "https://download.pytorch.org/whl/cu124" },
-    { name = "torch-cluster", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", index = "https://data.pyg.org/whl/torch-2.5.0+cu124.html" },
-    { name = "torch-geometric", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "torch-scatter", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", index = "https://data.pyg.org/whl/torch-2.5.0+cu124.html" },
-    { name = "torch-sparse", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", index = "https://data.pyg.org/whl/torch-2.5.0+cu124.html" },
-    { name = "torchdata", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
-    { name = "torchvision", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'", specifier = "==0.20.0", index = "https://download.pytorch.org/whl/cu124" },
     { name = "tyro" },
-    { name = "wandb", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'train'" },
     { name = "yapf" },
 ]
-provides-extras = ["train", "flash-attn"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1650,9 +1619,42 @@ docs = [
     { name = "sphinx-sitemap", specifier = ">=2.5" },
     { name = "sphinx-togglebutton", specifier = ">=0.3" },
 ]
+flash-attn = [{ name = "flash-attn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.5.4/flash_attn-2.8.3%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }]
 nersc = [
     { name = "cython" },
     { name = "mpi4py" },
+]
+train = [
+    { name = "cmake", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "cnms", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/cnms-2.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" },
+    { name = "einops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "h5py", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "huggingface-hub", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "matplotlib", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "ninja", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "nvidia-ml-py", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pandas", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pointgroup-ops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointgroup_ops-0.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" },
+    { name = "pointops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointops-1.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" },
+    { name = "pointrope", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointrope-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" },
+    { name = "pytorch3d-ops", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pytorch3d_ops-0.7.9%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" },
+    { name = "regex", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "rich", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "safetensors", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "scikit-learn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "serialize-cuda", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/serialize_cuda-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" },
+    { name = "spconv-cu124", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "tensorboardx", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "termcolor", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "timm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = "==2.5.0", index = "https://download.pytorch.org/whl/cu124" },
+    { name = "torch-cluster", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", index = "https://data.pyg.org/whl/torch-2.5.0+cu124.html" },
+    { name = "torch-geometric", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "torch-scatter", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", index = "https://data.pyg.org/whl/torch-2.5.0+cu124.html" },
+    { name = "torch-sparse", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", index = "https://data.pyg.org/whl/torch-2.5.0+cu124.html" },
+    { name = "torchdata", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "torchvision", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = "==0.20.0", index = "https://download.pytorch.org/whl/cu124" },
+    { name = "wandb", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
 [[package]]
@@ -1676,9 +1678,12 @@ wheels = [
 [[package]]
 name = "pointgroup-ops"
 version = "0.0.0+cu124torch2.5"
-source = { directory = "libs/pointgroup_ops" }
+source = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointgroup_ops-0.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
 dependencies = [
     { name = "torch" },
+]
+wheels = [
+    { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointgroup_ops-0.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl", hash = "sha256:4122a0a44965f7a3cae9fa40f719b435578930b4b739b97bf92a6f45b6ef4fb0" },
 ]
 
 [package.metadata]
@@ -1687,10 +1692,13 @@ requires-dist = [{ name = "torch" }]
 [[package]]
 name = "pointops"
 version = "1.0.0+cu124torch2.5"
-source = { directory = "libs/pointops" }
+source = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointops-1.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
 dependencies = [
     { name = "numpy" },
     { name = "torch" },
+]
+wheels = [
+    { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointops-1.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl", hash = "sha256:87175b2b6d4c7688e6abe0ca4c3e32522197143e119a399349bf676031f62a38" },
 ]
 
 [package.metadata]
@@ -1702,9 +1710,12 @@ requires-dist = [
 [[package]]
 name = "pointrope"
 version = "0.1.0+cu124torch2.5"
-source = { directory = "libs/pointrope" }
+source = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointrope-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
 dependencies = [
     { name = "torch" },
+]
+wheels = [
+    { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointrope-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl", hash = "sha256:bbb558237e2f286f1f42d1897ae0c96ea146789e70dcf1eed7b5364dca7a466b" },
 ]
 
 [package.metadata]
@@ -1925,9 +1936,12 @@ wheels = [
 [[package]]
 name = "pytorch3d-ops"
 version = "0.7.9+cu124torch2.5"
-source = { directory = "libs/pytorch3d_ops" }
+source = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pytorch3d_ops-0.7.9%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
 dependencies = [
     { name = "torch" },
+]
+wheels = [
+    { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pytorch3d_ops-0.7.9%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl", hash = "sha256:82f0a2e9590c505083f4d79e7bfe537f19d5345bbc4e5e970d1a2b45a106ffd6" },
 ]
 
 [package.metadata]
@@ -2131,9 +2145,12 @@ wheels = [
 [[package]]
 name = "serialize-cuda"
 version = "0.1.0+cu124torch2.5"
-source = { directory = "libs/serialize_cuda" }
+source = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/serialize_cuda-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
 dependencies = [
     { name = "torch" },
+]
+wheels = [
+    { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/serialize_cuda-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl", hash = "sha256:94456d98ee2bc1b1fd4e7b407268d42b987a88a1d68f2340df91fc47721828b2" },
 ]
 
 [package.metadata]

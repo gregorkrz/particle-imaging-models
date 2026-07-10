@@ -26,7 +26,7 @@ COPY pyproject.toml uv.lock .python-version ./
 COPY libs/ ./libs/
 COPY pimm/ ./pimm/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --all-extras --group docs --locked
+    uv sync --locked
 
 COPY --exclude=libs --exclude=pimm --exclude=pyproject.toml --exclude=uv.lock \
     --exclude=.python-version . /opt/pimm/src

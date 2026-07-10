@@ -126,7 +126,7 @@ myst_substitutions = {
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
-    "torch": ("https://pytorch.org/docs/stable", None),
+    "torch": ("https://docs.pytorch.org/docs/stable", None),
 }
 intersphinx_disabled_reftypes = ["*"]
 

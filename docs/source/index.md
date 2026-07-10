@@ -60,7 +60,7 @@ Each path runs pimm from your clone, so your checkout is the pimm source.
 
 :::{tab-item} Local (uv)
 ```bash
-# requires Linux x86_64, CUDA 12.4 with nvcc, GCC/G++ 9-12, and sparsehash
+# requires Linux x86_64 and an NVIDIA driver (training packages are prebuilt wheels)
 ./install.sh
 uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```

@@ -12,7 +12,6 @@ All Rights Reserved 2020.
 #include <array>
 #include <vector>
 #include <queue>
-#include <google/dense_hash_map>
 
 int ballquery_batch_p_cuda(int n, int meanActive, float radius, const float *xyz, const int *batch_idxs, const int *batch_offsets, int *idx, int *start_len, cudaStream_t stream);
 

@@ -1,11 +1,30 @@
 """Gradient, dtype, entropy, prototype, and parameter diagnostics."""
 
+import os
 import re
 import torch
 import torch.nn as nn
 
 from .default import HookBase
 from .builder import HOOKS
+
+
+@HOOKS.register_module()
+class SimulateCrash(HookBase):
+    """Hard-exit the process after a fixed number of steps to simulate a crash.
+
+    Fires only when ``PIMM_SIMULATE_CRASH_STEP`` is set, so a run can die
+    deterministically after writing a checkpoint while a later resume of the
+    same config runs to completion. Used to test crash recovery.
+    """
+
+    def after_step(self):
+        target = os.environ.get("PIMM_SIMULATE_CRASH_STEP")
+        if target is None:
+            return
+        self.step_count = getattr(self, "step_count", 0) + 1
+        if self.step_count >= int(target):
+            os._exit(137)
 
 @HOOKS.register_module()
 class GradientNormLogger(HookBase):

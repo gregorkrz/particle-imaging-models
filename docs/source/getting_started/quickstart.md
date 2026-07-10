@@ -35,7 +35,8 @@ uv run pimm submit --site <site> --train.config <config-path> [-- KEY=VALUE ...]
 `--train.config` is a path under `configs/`, with or without `.py`. Everything
 after a bare `--` separator is a training override, written as `KEY=VALUE`.
 
-pimm has three console commands (all also reachable as `uv run python -m pimm.cli …`):
+pimm has three console commands, each also reachable as
+`uv run python -m pimm.cli …`.
 
 ```{list-table}
 :header-rows: 1

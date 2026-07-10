@@ -293,10 +293,12 @@ def _get_global_gloo_group():
 def all_gather(data, group=None):
     """
     Run all_gather on arbitrary picklable data (not necessarily tensors).
+
     Args:
         data: any picklable object
         group: a torch process group. By default, will use a group which
             contains all ranks on gloo backend.
+
     Returns:
         list[data]: list of data gathered from each rank
     """

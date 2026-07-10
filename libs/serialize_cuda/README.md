@@ -19,7 +19,7 @@ To force a rebuild:
 
 ```bash
 TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" \
-  uv sync --all-extras --locked --reinstall-package serialize-cuda
+  uv sync --locked --reinstall-package serialize-cuda
 ```
 
 ## Use

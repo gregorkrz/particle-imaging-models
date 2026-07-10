@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 WITH_FLASH=1
 LAUNCHER_ONLY=0
+
+# clone target and branch, overridable for forks and CI
+REPO="${PIMM_REPO:-DeepLearnPhysics/particle-imaging-models}"
+BRANCH="${PIMM_BRANCH:-main}"
+# set SKIP_CLONE=1 to install from the current checkout instead of cloning
+SKIP_CLONE="${SKIP_CLONE:-}"
 
 usage() {
   cat <<'EOF'
@@ -11,6 +16,12 @@ Usage: ./install.sh [--no-flash | --launcher-only]
 
   --no-flash       install the GPU training environment without FlashAttention
   --launcher-only  install only the pimm launch/submit command dependencies
+
+Run in a checkout, or bootstrap from scratch:
+
+  curl -sSL https://raw.githubusercontent.com/DeepLearnPhysics/particle-imaging-models/main/install.sh | bash
+
+Environment: PIMM_REPO, PIMM_BRANCH, SKIP_CLONE=1.
 EOF
 }
 
@@ -29,69 +40,29 @@ ensure_uv() {
   command -v uv >/dev/null 2>&1 || fail "uv was installed but is not on PATH"
 }
 
-cuda_version() {
-  nvcc --version | awk '
-    /release/ {
-      for (i = 1; i <= NF; i++) {
-        if ($i == "release") {
-          gsub(/,/, "", $(i + 1))
-          print $(i + 1)
-          exit
-        }
-      }
-    }
-  '
+# a pimm checkout is any directory whose pyproject.toml declares name = "pimm"
+in_pimm_checkout() {
+  [ -f pyproject.toml ] && grep -qE '^name = "pimm"' pyproject.toml
 }
 
-detect_cuda_home() {
-  if [ -n "${CUDA_HOME:-}" ] && [ -x "$CUDA_HOME/bin/nvcc" ]; then
+ensure_checkout() {
+  if [ "$SKIP_CLONE" = "1" ] || in_pimm_checkout; then
     return
   fi
-  command -v nvcc >/dev/null 2>&1 || fail \
-    "CUDA 12.4 with nvcc is required; install it or load your site's CUDA module"
-  local nvcc_path
-  nvcc_path="$(readlink -f "$(command -v nvcc)")"
-  export CUDA_HOME="$(dirname "$(dirname "$nvcc_path")")"
-}
-
-detect_arches() {
-  if [ -n "${TORCH_CUDA_ARCH_LIST:-}" ]; then
-    return
+  command -v git >/dev/null 2>&1 || fail "git is required to clone pimm"
+  local dir
+  dir="$(basename "$REPO")"
+  if [ ! -d "$dir/.git" ]; then
+    echo "cloning $REPO (branch $BRANCH) into $dir"
+    git clone --branch "$BRANCH" "https://github.com/${REPO}.git" "$dir"
   fi
-  command -v nvidia-smi >/dev/null 2>&1 || fail \
-    "nvidia-smi is required to detect GPU architectures; set TORCH_CUDA_ARCH_LIST to build without it"
-  local capabilities
-  capabilities="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null || true)"
-  [ -n "$capabilities" ] || fail \
-    "could not detect GPU compute capability; set TORCH_CUDA_ARCH_LIST, for example 8.0 or 9.0"
-  export TORCH_CUDA_ARCH_LIST
-  TORCH_CUDA_ARCH_LIST="$(printf '%s\n' "$capabilities" | tr -d ' ' | sort -u | paste -sd' ' -)"
+  cd "$dir"
 }
 
-validate_toolchain() {
-  [ "$(uname -s)" = "Linux" ] || fail "GPU training installs support Linux only"
-  [ "$(uname -m)" = "x86_64" ] || fail "GPU training installs support x86_64 only"
-
-  detect_cuda_home
-  export PATH="$CUDA_HOME/bin:$PATH"
-  [ "$(cuda_version)" = "12.4" ] || fail \
-    "CUDA 12.4 is required, but nvcc reports $(cuda_version || echo unknown)"
-
-  export CC="${CC:-gcc}"
-  export CXX="${CXX:-g++}"
-  command -v "$CC" >/dev/null 2>&1 || fail "a GCC host compiler is required"
-  command -v "$CXX" >/dev/null 2>&1 || fail "a G++ host compiler is required"
-  local cxx_major
-  cxx_major="$("$CXX" -dumpfullversion -dumpversion | cut -d. -f1)"
-  [ "$cxx_major" -ge 9 ] && [ "$cxx_major" -le 12 ] || fail \
-    "G++ 9 through 12 is required for the CUDA 12.4 extension builds"
-
-  printf '#include <google/sparse_hash_map>\n' | "$CXX" -E -x c++ - >/dev/null 2>&1 || fail \
-    "sparsehash headers are required; install libsparsehash-dev or load an equivalent module"
-
-  detect_arches
-  export FORCE_CUDA=1
-  export MAX_JOBS="${MAX_JOBS:-2}"
+# the prebuilt training wheels exist only for linux x86_64
+require_supported_platform() {
+  [ "$(uname -s)" = "Linux" ] || fail "the training environment supports Linux only"
+  [ "$(uname -m)" = "x86_64" ] || fail "the training environment supports x86_64 only"
 }
 
 while [ $# -gt 0 ]; do
@@ -113,26 +84,24 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-cd "$HERE"
 ensure_uv
+ensure_checkout
 
 if [ "$LAUNCHER_ONLY" -eq 1 ]; then
-  uv sync --locked
+  uv sync --locked --no-default-groups
   echo "launcher environment ready. run commands with: uv run pimm"
   exit 0
 fi
 
-validate_toolchain
-echo "CUDA_HOME=$CUDA_HOME"
-echo "TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST"
+require_supported_platform
 
 if [ "$WITH_FLASH" -eq 1 ]; then
-  uv sync --all-extras --locked
+  uv sync --locked
 else
-  uv sync --extra train --locked
+  uv sync --locked --no-default-groups --group train
 fi
 
-uv run --no-sync python - <<PY
+uv run python - <<PY
 import importlib
 
 modules = [

@@ -1,0 +1,243 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - pyproject.toml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Stable draft release tag to retry
+        required: true
+        type: string
+      ref:
+        description: Full release commit SHA or existing stable tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.draft.outputs.release }}
+      sha: ${{ steps.version.outputs.sha }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Verify release commit
+        id: commit
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REF: ${{ inputs.ref || '' }}
+          INPUT_TAG: ${{ inputs.tag || '' }}
+        run: |
+          if [[ "$EVENT_NAME" = "workflow_dispatch" &&
+                "$INPUT_REF" != "$INPUT_TAG" &&
+                "$INPUT_REF" != "refs/tags/$INPUT_TAG" &&
+                ! "$INPUT_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "ref must be the full release commit SHA or the existing stable tag" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          release_sha="$(git rev-parse 'HEAD^{commit}')"
+          if ! git merge-base --is-ancestor "$release_sha" refs/remotes/origin/main; then
+            echo "$release_sha is not an ancestor of origin/main" >&2
+            exit 1
+          fi
+          echo "sha=$release_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release version
+        id: version
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag || '' }}
+          RELEASE_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          pattern = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          match = pattern.fullmatch(version)
+          if not match:
+              raise SystemExit(f"pyproject.toml must contain a stable X.Y.Z version, found {version!r}")
+          if os.environ["DEFAULT_BRANCH"] != "main":
+              raise SystemExit("the canonical default branch must be main")
+
+          candidate = False
+          if os.environ["EVENT_NAME"] == "push":
+              before = os.environ["BEFORE_SHA"]
+              if not before or before == "0" * 40:
+                  raise SystemExit("the push event does not contain a valid previous commit")
+              previous_text = subprocess.check_output(
+                  ["git", "show", f"{before}:pyproject.toml"], text=True
+              )
+              previous = tomllib.loads(previous_text)["project"]["version"]
+              if previous == version:
+                  print("pyproject.toml changed without a version bump")
+              else:
+                  previous_match = pattern.fullmatch(previous)
+                  if not previous_match:
+                      raise SystemExit(f"previous project version is not stable SemVer: {previous!r}")
+                  if tuple(map(int, match.groups())) <= tuple(map(int, previous_match.groups())):
+                      raise SystemExit(f"project version must increase from {previous} to {version}")
+                  candidate = True
+          else:
+              expected = f"v{version}"
+              if os.environ["INPUT_TAG"] != expected:
+                  raise SystemExit(
+                      f"requested tag {os.environ['INPUT_TAG']!r} does not match {expected!r}"
+                  )
+              candidate = True
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a") as stream:
+              stream.write(f"candidate={str(candidate).lower()}\n")
+              stream.write(f"sha={os.environ['RELEASE_SHA']}\n")
+              stream.write(f"tag=v{version}\n")
+              stream.write(f"version={version}\n")
+          PY
+
+      - name: Verify curated draft
+        id: draft
+        env:
+          CANDIDATE: ${{ steps.version.outputs.candidate }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          echo "release=false" >> "$GITHUB_OUTPUT"
+          if [ "$CANDIDATE" != "true" ]; then
+            exit 0
+          fi
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json body,isDraft,name > "$RUNNER_TEMP/release.json"; then
+            echo "create and curate draft release $TAG before merging the version change" >&2
+            exit 1
+          fi
+          if [ "$(jq -r .isDraft "$RUNNER_TEMP/release.json")" != "true" ]; then
+            echo "release $TAG is already published"
+            exit 0
+          fi
+          if ! jq -e '((.name // "") | test("\\S")) and ((.body // "") | test("\\S"))' \
+            "$RUNNER_TEMP/release.json" >/dev/null; then
+            echo "draft release $TAG must have a title and curated notes" >&2
+            exit 1
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+  checks:
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: 0.11.28
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Check lock file
+        run: uv lock --check
+
+      - name: Check Python sources
+        run: python -m compileall -q pimm
+
+      - name: Build distributions
+        run: uv build --out-dir "$RUNNER_TEMP/dist"
+
+  tag:
+    needs:
+      - prepare
+      - checks
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Create annotated tag
+        env:
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          git fetch origin --tags --force
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            test "$(git cat-file -t "refs/tags/$TAG")" = tag
+            test "$(git rev-parse "$TAG^{}")" = "$RELEASE_SHA"
+            echo "annotated tag $TAG already points to $RELEASE_SHA"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" "$RELEASE_SHA" -m "pimm $TAG"
+          git push origin "refs/tags/$TAG"
+
+  dispatch-docker:
+    needs:
+      - prepare
+      - tag
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch versioned images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          gh workflow run docker.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$TAG" \
+            -f "ref=$TAG" \
+            -f "tag=$TAG"
+
+  publish:
+    needs:
+      - prepare
+      - dispatch-docker
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

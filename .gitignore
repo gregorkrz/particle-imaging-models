@@ -51,10 +51,11 @@ AGENT.md
 # local scratch / private notes
 ablations.csv
 WORKFLOW-private-fork.md
+UV_MIGRATION_CLUSTER_HANDOFF.md
 *.scratch
 
 tools/
-tests/
 scripts/
 !/.github/scripts/
 !/.github/scripts/**
+/.github/scripts/**/__pycache__/
