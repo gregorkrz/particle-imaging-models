@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WITH_FLASH=1
 LAUNCHER_ONLY=0
 
 # clone target and branch, overridable for forks and CI
@@ -12,9 +11,8 @@ SKIP_CLONE="${SKIP_CLONE:-}"
 
 usage() {
   cat <<'EOF'
-Usage: ./install.sh [--no-flash | --launcher-only]
+Usage: ./install.sh [--launcher-only]
 
-  --no-flash       install the GPU training environment without FlashAttention
   --launcher-only  install only the pimm launch/submit command dependencies
 
 Run in a checkout, or bootstrap from scratch:
@@ -67,9 +65,6 @@ require_supported_platform() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --no-flash)
-      WITH_FLASH=0
-      ;;
     --launcher-only)
       LAUNCHER_ONLY=1
       ;;
@@ -95,11 +90,7 @@ fi
 
 require_supported_platform
 
-if [ "$WITH_FLASH" -eq 1 ]; then
-  uv sync --locked
-else
-  uv sync --locked --no-default-groups --group train
-fi
+uv sync --locked
 
 uv run python - <<PY
 import importlib
@@ -117,8 +108,6 @@ modules = [
     "torch_scatter",
     "torch_sparse",
 ]
-if $WITH_FLASH:
-    modules.append("flash_attn")
 for module in modules:
     importlib.import_module(module)
 print("validated:", ", ".join(modules))

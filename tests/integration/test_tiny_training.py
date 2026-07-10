@@ -19,37 +19,6 @@ ROOT = Path(__file__).resolve().parents[2]
 TIMEOUT = 300
 
 
-def _command(output_dir, run_name, *options, nproc=1, config="tests/tiny_semseg", resume=False):
-    command = [
-        "uv",
-        "run",
-        "--no-sync",
-        "pimm",
-        "launch",
-        "--site",
-        "local",
-        "--paths.repo-root",
-        str(ROOT),
-        "--paths.exp-root",
-        str(output_dir),
-        "--resources.nproc-per-node",
-        str(nproc),
-        "--resources.cpus-per-proc",
-        "2",
-        "--run.name",
-        run_name,
-        "--run.no-timestamp",
-        "--train.config",
-        config,
-        "--train.no-code-copy",
-    ]
-    if resume:
-        command.append("--train.resume")
-    command.append("--")
-    command.extend(options)
-    return command
-
-
 def _env(pilarnet_mini_root):
     return {
         "HF_HUB_DISABLE_XET": "1",
@@ -73,12 +42,21 @@ def tiny_training_process(
     pilarnet_mini_root,
     output_dir,
 ):
-    command = _command(
-        output_dir,
-        "tiny-semseg",
+    command = [
+        "uv", "run", "--no-sync", "pimm", "launch",
+        "--site", "local",
+        "--paths.repo-root", str(ROOT),
+        "--paths.exp-root", str(output_dir),
+        "--resources.nproc-per-node", "1",
+        "--resources.cpus-per-proc", "2",
+        "--run.name", "tiny-semseg",
+        "--run.no-timestamp",
+        "--train.config", "tests/tiny_semseg",
+        "--train.no-code-copy",
+        "--",
         "data.train.data_root=" + str(pilarnet_mini_root),
         "data.val.data_root=" + str(pilarnet_mini_root),
-    )
+    ]
     return run_process(
         command,
         env=_env(pilarnet_mini_root),
@@ -92,21 +70,30 @@ def overfit_process(
     pilarnet_mini_root,
     output_dir,
 ):
-    command = _command(
-        output_dir,
-        "tiny-overfit",
+    command = [
+        "uv", "run", "--no-sync", "pimm", "launch",
+        "--site", "local",
+        "--paths.repo-root", str(ROOT),
+        "--paths.exp-root", str(output_dir),
+        "--resources.nproc-per-node", "1",
+        "--resources.cpus-per-proc", "2",
+        "--run.name", "tiny-overfit",
+        "--run.no-timestamp",
+        "--train.config", "tests/tiny_semseg",
+        "--train.no-code-copy",
+        "--",
         "epoch=60",
         "data.train.data_root=" + str(pilarnet_mini_root),
         "data.train.max_len=4",
         "data.val.data_root=" + str(pilarnet_mini_root),
         "data.val.split=train",
         "data.val.max_len=4",
-        "batch_size=4",
+        "batch_size=1",
         "batch_size_val=4",
         "optimizer.lr=0.01",
         "optimizer.weight_decay=0.0",
         "scheduler.max_lr=0.01",
-    )
+    ]
     return run_process(
         command,
         env=_env(pilarnet_mini_root),
@@ -140,13 +127,21 @@ def resume_process(
 ):
     # first run trains with SimulateCrash and dies mid-training after writing a
     # save_freq checkpoint; the resume run recovers from it and finishes epoch 2.
-    crash_command = _command(
-        output_dir,
-        "tiny-resume",
+    crash_command = [
+        "uv", "run", "--no-sync", "pimm", "launch",
+        "--site", "local",
+        "--paths.repo-root", str(ROOT),
+        "--paths.exp-root", str(output_dir),
+        "--resources.nproc-per-node", "1",
+        "--resources.cpus-per-proc", "2",
+        "--run.name", "tiny-resume",
+        "--run.no-timestamp",
+        "--train.config", "tests/tiny_semseg_crash",
+        "--train.no-code-copy",
+        "--",
         "data.train.data_root=" + str(pilarnet_mini_root),
         "data.val.data_root=" + str(pilarnet_mini_root),
-        config="tests/tiny_semseg_crash",
-    )
+    ]
     crashed = run_process(
         crash_command,
         env={**_env(pilarnet_mini_root), "PIMM_SIMULATE_CRASH_STEP": "8"},
@@ -154,14 +149,22 @@ def resume_process(
     )
     losses_before = training_losses(_log_lines(output_dir, "tiny-resume"))
 
-    resume_command = _command(
-        output_dir,
-        "tiny-resume",
+    resume_command = [
+        "uv", "run", "--no-sync", "pimm", "launch",
+        "--site", "local",
+        "--paths.repo-root", str(ROOT),
+        "--paths.exp-root", str(output_dir),
+        "--resources.nproc-per-node", "1",
+        "--resources.cpus-per-proc", "2",
+        "--run.name", "tiny-resume",
+        "--run.no-timestamp",
+        "--train.config", "tests/tiny_semseg_crash",
+        "--train.no-code-copy",
+        "--train.resume",
+        "--",
         "data.train.data_root=" + str(pilarnet_mini_root),
         "data.val.data_root=" + str(pilarnet_mini_root),
-        config="tests/tiny_semseg_crash",
-        resume=True,
-    )
+    ]
     resumed = run_process(
         resume_command,
         env=_env(pilarnet_mini_root),
@@ -218,16 +221,24 @@ def distributed_process(
     output_dir,
 ):
     _requires_two_gpus()
-    command = _command(
-        output_dir,
-        "tiny-distributed",
+    command = [
+        "uv", "run", "--no-sync", "pimm", "launch",
+        "--site", "local",
+        "--paths.repo-root", str(ROOT),
+        "--paths.exp-root", str(output_dir),
+        "--resources.nproc-per-node", "2",
+        "--resources.cpus-per-proc", "2",
+        "--run.name", "tiny-distributed",
+        "--run.no-timestamp",
+        "--train.config", "tests/tiny_semseg",
+        "--train.no-code-copy",
+        "--",
         "data.train.data_root=" + str(pilarnet_mini_root),
         "data.val.data_root=" + str(pilarnet_mini_root),
         "batch_size=2",
         "batch_size_val=2",
         "batch_size_test=2",
-        nproc=2,
-    )
+    ]
     return run_process(
         command,
         env=_env(pilarnet_mini_root),

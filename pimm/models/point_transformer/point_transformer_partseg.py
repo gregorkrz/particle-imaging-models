@@ -97,7 +97,7 @@ class TransitionDown(nn.Module):
             for i in range(1, o.shape[0]):
                 count += (o[i].item() - o[i - 1].item()) // self.stride
                 n_o.append(count)
-            n_o = torch.cuda.IntTensor(n_o)
+            n_o = torch.tensor(n_o, dtype=torch.int32, device=o.device)
             idx = pointops.farthest_point_sampling(p, o, n_o)  # (m)
             n_p = p[idx.long(), :]  # (m, 3)
             x, _ = pointops.knn_query_and_group(

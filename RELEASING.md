@@ -25,5 +25,5 @@ Never move a published tag; roll back with a new PATCH release.
 
 ## Native wheels
 
-Native wheel tags (`native-wheels-*`) are an independent stream, rebuilt only when the CUDA/PyTorch/Python/architecture stack changes.
+Native wheel tags (`pimm-wheels-*`) are an independent stream, rebuilt only when the CUDA/PyTorch/Python/architecture stack changes.
 Run the Native wheel draft release workflow manually; application releases never rebuild them.

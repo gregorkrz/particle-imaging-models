@@ -17,13 +17,13 @@ A full local training installation requires:
 - Linux on x86_64.
 - An NVIDIA GPU and a recent driver.
 
-That is all. The training stack, including PyTorch and the six native CUDA
-extensions, installs as prebuilt CUDA 12.4 wheels, so no CUDA toolkit, host
+That is all. The training stack, including PyTorch and the native CUDA
+extensions, installs as prebuilt CUDA 12.6 wheels, so no CUDA toolkit, host
 compiler, or system libraries are needed. uv provides Python 3.10 and the rest.
 The installer does not invoke `sudo` or modify system packages.
 
 Rebuilding a native extension from source (an occasional maintainer task) does
-need the CUDA 12.4 toolkit and GCC/G++ 9 through 12.
+need the CUDA 12.6 toolkit and a compatible GCC/G++ host compiler.
 
 ## Local uv environment
 
@@ -60,16 +60,10 @@ source .venv/bin/activate
 pimm launch --help
 ```
 
-### FlashAttention
+### Flash attention
 
-The default install downloads the official FlashAttention 2.7.3 wheel built for Python 3.10, PyTorch 2.5, and CUDA 12.
-It does not compile FlashAttention from source.
-
-Install without FlashAttention when every selected model has `enable_flash=False`:
-
-```bash
-./install.sh --no-flash
-```
+Flash attention kernels ship inside PyTorch (`torch.nn.attention.varlen.varlen_attn`), so no separate flash-attn package is installed or compiled.
+Models select the fast path with `enable_flash=True` in their configs.
 
 ### Repeated installs
 
@@ -98,7 +92,7 @@ The full training environment remains inside the selected container on compute n
 The prebuilt image is the shortest path on an HPC system:
 
 ```bash
-apptainer pull pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
+apptainer pull pimm.sif docker://youngsm/pimm:pytorch2.13.0-cuda12.6
 ```
 
 Run from the repository root so the image imports the current checkout:
@@ -141,7 +135,6 @@ Check the locked Python and CUDA stack:
 
 ```bash
 uv run python - <<'PY'
-import flash_attn
 import pointops
 import spconv
 import torch
@@ -179,7 +172,7 @@ cp example.env .env
 ## Troubleshooting
 
 :::{dropdown} the training packages are missing
-The training stack (`train`) and FlashAttention (`flash-attn`) are default dependency groups, so a plain `uv sync --locked` installs them.
+The training stack (`train`) is a default dependency group, so a plain `uv sync --locked` installs it.
 If a host only needs the launcher, `uv sync --locked --no-default-groups` installs the minimal environment instead.
 :::
 

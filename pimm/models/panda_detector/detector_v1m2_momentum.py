@@ -6,10 +6,7 @@ import torch
 import torch.distributed as dist
 from torch import nn
 
-try:
-    import flash_attn
-except ImportError:
-    flash_attn = None
+from pimm.models.utils.attention import flash_attn_varlen_func
 
 import torch.nn.functional as F
 import torch_scatter
@@ -135,8 +132,8 @@ class SelfAttentionLayer(nn.Module):
         k = self.k(self.with_pos(qkv, q_pos))
         v = self.v(qkv)
         
-        if self.enable_flash and flash_attn is not None and q.is_cuda:
-            feat = flash_attn.flash_attn_varlen_func(
+        if self.enable_flash and q.is_cuda:
+            feat = flash_attn_varlen_func(
                 q.to(torch.bfloat16).reshape(-1, H, C // H),
                 k.to(torch.bfloat16).reshape(-1, H, C // H),
                 v.to(torch.bfloat16).reshape(-1, H, C // H),

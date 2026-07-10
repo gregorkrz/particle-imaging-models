@@ -16,7 +16,6 @@ dependencies = [
 
 [dependency-groups]
 train = [
-    "cmake; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "h5py; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "tensorboardx; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "wandb; sys_platform == 'linux' and platform_machine == 'x86_64'",
@@ -31,24 +30,20 @@ train = [
     "safetensors; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "timm; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "regex; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "torch==2.5.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "torchvision==0.20.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch==2.13.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torchvision==0.28.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torchdata; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "ninja; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torch-geometric; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torch-scatter; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torch-sparse; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torch-cluster; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "spconv-cu124; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "spconv-cu126; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "pointrope; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "pointops; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "pointgroup-ops; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "cnms; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "pytorch3d-ops; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "serialize-cuda; sys_platform == 'linux' and platform_machine == 'x86_64'",
-]
-flash-attn = [
-    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.5.4/flash_attn-2.8.3%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 dev = [
     "black",
@@ -79,7 +74,8 @@ include = ["pimm*"]
 
 [tool.uv]
 required-version = ">=0.11.1"
-default-groups = ["train", "flash-attn"]
+exclude-newer = "7 days"
+default-groups = ["train"]
 concurrent-builds = 1
 cache-keys = [
     { file = "pyproject.toml" },
@@ -90,28 +86,35 @@ environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
+[tool.uv.exclude-newer-package]
+torch = false
+torchvision = false
+cnms = false
+pointgroup-ops = false
+pointops = false
+pointrope = false
+pytorch3d-ops = false
+serialize-cuda = false
+torch-scatter = false
+torch-sparse = false
+torch-cluster = false
+
 [tool.uv.sources]
-torch = { index = "pytorch-cu124" }
-torchvision = { index = "pytorch-cu124" }
-torch-scatter = { index = "pyg-cu124" }
-torch-sparse = { index = "pyg-cu124" }
-torch-cluster = { index = "pyg-cu124" }
-pointrope = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointrope-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
-pointops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointops-1.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
-pointgroup-ops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pointgroup_ops-0.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
-cnms = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/cnms-2.0.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
-pytorch3d-ops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/pytorch3d_ops-0.7.9%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
-serialize-cuda = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/native-wheels-cu124-torch2.5-cp310-v1/serialize_cuda-0.1.0%2Bcu124torch2.5-cp310-cp310-linux_x86_64.whl" }
+torch = { index = "pytorch-cu126" }
+torchvision = { index = "pytorch-cu126" }
+pointrope = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/pointrope-0.1.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+pointops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/pointops-1.0.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+pointgroup-ops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/pointgroup_ops-0.0.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+cnms = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/cnms-2.0.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+pytorch3d-ops = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/pytorch3d_ops-0.7.9%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+serialize-cuda = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/serialize_cuda-0.1.0%2Bcu126torch2.13-cp310-cp310-linux_x86_64.whl" }
+torch-scatter = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/torch_scatter-2.1.2-cp310-cp310-linux_x86_64.whl" }
+torch-sparse = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/torch_sparse-0.6.18-cp310-cp310-linux_x86_64.whl" }
+torch-cluster = { url = "https://github.com/DeepLearnPhysics/particle-imaging-models/releases/download/pimm-wheels-cu126-torch2.13-cp310/torch_cluster-1.6.3-cp310-cp310-linux_x86_64.whl" }
 
 [[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
-explicit = true
-
-[[tool.uv.index]]
-name = "pyg-cu124"
-url = "https://data.pyg.org/whl/torch-2.5.0+cu124.html"
-format = "flat"
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.pytest.ini_options]

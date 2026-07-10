@@ -224,10 +224,22 @@ then
     exit 2
   fi
   CONFIG_DIR=${EXP_DIR}/config.py
-  WEIGHT=$($PYTHON -m pimm.utils.path latest-checkpoint "$MODEL_SAVE_DIR")
+  WEIGHT=$($PYTHON -m pimm.utils.path latest-checkpoint "${EXP_DIR}/model")
   if [ -z "$WEIGHT" ]; then
-    echo "ERROR: resume=true but no complete checkpoint found at $MODEL_SAVE_DIR/last, last.prev, or model_last.pth" >&2
+    echo "ERROR: resume=true but no complete checkpoint found at ${EXP_DIR}/model/last, last.prev, or model_last.pth" >&2
     exit 2
+  fi
+fi
+
+# Ensure the physical checkpoint dir exists and expose it at EXP_DIR/model.
+# This must happen regardless of the code-copy mode below; the link is only
+# created when EXP_DIR/model is absent or already a link, so runs that saved
+# checkpoints into a plain EXP_DIR/model directory keep working.
+if [ "${SLURM_PROCID:-0}" = "0" ]; then
+  mkdir -p "$MODEL_SAVE_DIR"
+  if [ -n "$MODEL_LINK_DIR" ] && { [ ! -e "$MODEL_LINK_DIR" ] || [ -L "$MODEL_LINK_DIR" ]; }; then
+    mkdir -p "$EXP_DIR"
+    ln -sfn "$(realpath "$MODEL_SAVE_DIR")" "$MODEL_LINK_DIR"
   fi
 fi
 
@@ -252,14 +264,6 @@ else
     echo " =========> CREATE EXP DIR <========="
     echo "Experiment dir: $EXP_DIR"
     cp -r scripts tools pimm "$CODE_DIR" 2>/dev/null
-
-    # Ensure physical checkpoint dir exists
-    mkdir -p "$MODEL_SAVE_DIR"
-
-    if [ -n "$MODEL_LINK_DIR" ]; then
-      # Link local 'model' folder to physical checkpoint dir
-      ln -sfn "$(realpath "$MODEL_SAVE_DIR")" "$MODEL_LINK_DIR"
-    fi
     touch "$SNAPSHOT_DONE"
   else
     for _ in $(seq 1 600); do

@@ -95,9 +95,9 @@ def _prime_cache():
 
 
 image = (
-    # base CUDA/cuDNN must match the locked torch stack (torch 2.5.0, cu124)
+    # base CUDA/cuDNN must match the locked torch stack (torch 2.13.0, cu126)
     modal.Image.from_registry(
-        "pytorch/pytorch:2.5.0-cuda12.4-cudnn9-devel",
+        "pytorch/pytorch:2.13.0-cuda12.6-cudnn9-devel",
         add_python="3.10",
     )
     .pip_install("huggingface_hub", f"uv=={UV_VERSION}")

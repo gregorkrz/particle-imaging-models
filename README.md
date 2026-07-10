@@ -46,8 +46,9 @@ We are looking at including the following models/modalities in the future:
 ### Prerequisites
 
 Linux x86_64 and an NVIDIA GPU with a recent driver. The training stack
-(PyTorch, the six native extensions, FlashAttention) installs as prebuilt CUDA
-12.4 wheels, so no CUDA toolkit or host compiler is required.
+(PyTorch and the native extensions) installs as prebuilt CUDA 12.6 wheels,
+so no CUDA toolkit or host compiler is required. Flash attention kernels
+ship inside PyTorch, so no separate flash-attn package is needed.
 
 ### Quick setup
 
@@ -77,7 +78,6 @@ git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
 cd particle-imaging-models
 
 ./install.sh                    # full GPU environment
-./install.sh --no-flash         # omit FlashAttention
 ./install.sh --launcher-only    # pimm launch/submit without training packages
 ```
 
@@ -92,7 +92,7 @@ directory, or `PIMM_REPO` / `PIMM_BRANCH` to target a fork or branch.
 Prebuilt images resolve from the same `uv.lock` as the local install.
 
 ```bash
-apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.5.0-cuda12.4
+apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.13.0-cuda12.6
 ```
 
 The image installs `pimm` at `/opt/pimm/src` with its environment at
@@ -105,8 +105,8 @@ docker build -f .github/docker/Dockerfile -t pimm:local .   # or Dockerfile.ners
 
 | Image | Description |
 |-------|-------------|
-| `youngsm/pimm:pytorch2.5.0-cuda12.4` | Standard image |
-| `youngsm/pimm-nersc:pytorch2.5.0-cuda12.4` | NERSC variant with extra dependencies |
+| `youngsm/pimm:pytorch2.13.0-cuda12.6` | Standard image |
+| `youngsm/pimm-nersc:pytorch2.13.0-cuda12.6` | NERSC variant with extra dependencies |
 </details>
 
 ## Training & Testing

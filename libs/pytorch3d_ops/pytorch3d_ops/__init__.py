@@ -6,4 +6,4 @@
 
 # pyre-unsafe
 
-__version__ = "0.7.9+cu124torch2.5"
+__version__ = "0.7.9+cu126torch2.13"

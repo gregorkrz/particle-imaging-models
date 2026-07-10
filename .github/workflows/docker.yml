@@ -54,7 +54,7 @@ jobs:
             exit 1
           fi
           case "$BUILD_REF" in
-            native-wheels-*)
+            pimm-wheels-*)
               echo "native wheel refs are not application image refs" >&2
               exit 1
               ;;
@@ -111,10 +111,10 @@ jobs:
         type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
         type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
         type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
-        type=raw,value=pytorch2.5.0-cuda12.4
+        type=raw,value=pytorch2.13.0-cuda12.6
       build-args: |
-        TORCH_VERSION=2.5.0
-        CUDA_VERSION=12.4
+        TORCH_VERSION=2.13.0
+        CUDA_VERSION=12.6
         CUDNN_VERSION=9
         TORCH_CUDA_ARCH_LIST=8.0 8.6 8.9 9.0
     secrets:
@@ -145,10 +145,10 @@ jobs:
         type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
         type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
         type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
-        type=raw,value=pytorch2.5.0-cuda12.4
+        type=raw,value=pytorch2.13.0-cuda12.6
       build-args: |
-        TORCH_VERSION=2.5.0
-        CUDA_VERSION=12.4
+        TORCH_VERSION=2.13.0
+        CUDA_VERSION=12.6
         CUDNN_VERSION=9
         TORCH_CUDA_ARCH_LIST=8.0 8.6 8.9 9.0
     secrets:

@@ -3,20 +3,20 @@
   "repository": "DeepLearnPhysics/particle-imaging-models",
   "stacks": [
     {
-      "id": "cu124-torch2.5-cp310",
+      "id": "cu126-torch2.13-cp310",
       "python": "3.10",
       "python_tag": "cp310",
-      "torch": "2.5.0+cu124",
-      "cuda": "12.4",
-      "cuda_tag": "cu124",
+      "torch": "2.13.0+cu126",
+      "cuda": "12.6",
+      "cuda_tag": "cu126",
       "arches": [
         "8.0",
         "8.6",
         "8.9",
         "9.0"
       ],
-      "build_image": "pytorch/pytorch:2.5.0-cuda12.4-cudnn9-devel",
-      "release_tag": "native-wheels-cu124-torch2.5-cp310-v1",
+      "build_image": "pytorch/manylinux2_28-builder:cuda12.6-v2.13.0-rc15",
+      "release_tag": "pimm-wheels-cu126-torch2.13-cp310",
       "packages": [
         {
           "path": "libs/cnms",
@@ -53,6 +53,21 @@
           "base_version": "0.1.0",
           "distribution": "serialize-cuda",
           "import_name": "serialize_cuda"
+        },
+        {
+          "requirement": "torch-scatter==2.1.2",
+          "distribution": "torch-scatter",
+          "import_name": "torch_scatter"
+        },
+        {
+          "requirement": "torch-sparse==0.6.18",
+          "distribution": "torch-sparse",
+          "import_name": "torch_sparse"
+        },
+        {
+          "requirement": "torch-cluster==1.6.3",
+          "distribution": "torch-cluster",
+          "import_name": "torch_cluster"
         }
       ]
     }

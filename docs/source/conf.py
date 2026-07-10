@@ -64,7 +64,6 @@ autodoc_default_options = {
 # the full stack, but mocking these keeps the build resilient on a thin host.
 autodoc_mock_imports = [
     "spconv",
-    "flash_attn",
     "ocnn",
     "MinkowskiEngine",
     "pointops",
@@ -119,7 +118,7 @@ myst_enable_extensions = [
 myst_heading_anchors = 3
 myst_substitutions = {
     "repo_url": "https://github.com/DeepLearnPhysics/particle-imaging-models",
-    "docker_image": "youngsm/pimm:pytorch2.5.0-cuda12.4",
+    "docker_image": "youngsm/pimm:pytorch2.13.0-cuda12.6",
 }
 
 # -- Intersphinx -------------------------------------------------------------

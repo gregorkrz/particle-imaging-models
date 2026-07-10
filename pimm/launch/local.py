@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 import shlex
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -17,14 +18,41 @@ from .utils import ROOT, as_bool, option_value, resources, scheduler, shell_join
 REDACTED = "<redacted>"
 
 
+def _loopback_port_usable(port: int) -> bool:
+    """Return whether a rendezvous server on this port is reachable over loopback.
+
+    Cluster nodes can silently drop traffic to arbitrary ports even on loopback,
+    which leaves torchrun clients hanging in SYN-SENT until they time out.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind(("0.0.0.0", port))
+            server.listen(1)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+                client.settimeout(0.25)
+                client.connect(("127.0.0.1", port))
+    except OSError:
+        return False
+    return True
+
+
 def local_master_port(run_name: str | None) -> int:
     """Derive a stable, ~unique local rendezvous port from the run name.
 
     Mirrors Pointcept's hashed MASTER_PORT so concurrent / back-to-back local runs
-    on a shared node do not collide on a fixed port. Range 20000-39999.
+    on a shared node do not collide on a fixed port. Range 20000-39999. Candidate
+    ports that are occupied or firewalled are skipped by deterministic re-hashing,
+    so a run name maps to the same port on any node with the same port policy.
     """
     digest = hashlib.md5((run_name or "pimm").encode()).hexdigest()
-    return 20000 + int(digest[:8], 16) % 20000
+    port = 20000 + int(digest[:8], 16) % 20000
+    for _ in range(20):
+        if _loopback_port_usable(port):
+            break
+        digest = hashlib.md5(digest.encode()).hexdigest()
+        port = 20000 + int(digest[:8], 16) % 20000
+    return port
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|token|secret|password|passwd|credential)", re.I)
 
 
