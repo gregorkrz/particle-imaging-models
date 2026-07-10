@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pimm"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.10,<3.11"
 dependencies = [
     "PyYAML",
@@ -14,7 +14,7 @@ dependencies = [
     "yapf",
 ]
 
-[dependency-groups]
+[dependency-groups ]
 train = [
     "h5py; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "tensorboardx; sys_platform == 'linux' and platform_machine == 'x86_64'",
