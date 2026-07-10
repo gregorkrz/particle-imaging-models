@@ -124,6 +124,73 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  test-standard:
+    needs: build-standard
+    if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: youngsm/pimm:pytorch2.13.0-cuda12.6
+      TORCH_VERSION: 2.13.0
+      CUDA_VERSION: "12.6"
+    steps:
+      - name: Validate imports, stack, and CLI
+        run: |
+          docker pull "$IMAGE"
+          docker run --rm --env TORCH_VERSION --env CUDA_VERSION "$IMAGE" python - <<'PY'
+          import importlib
+          import os
+
+          modules = [
+              "cnms",
+              "pointgroup_ops",
+              "pointops",
+              "pointrope",
+              "pytorch3d_ops",
+              "serialize_cuda",
+              "spconv",
+              "torch",
+              "torch_cluster",
+              "torch_scatter",
+              "torch_sparse",
+              "torchvision",
+              "pimm.models",
+          ]
+          for module in modules:
+              importlib.import_module(module)
+          import torch
+          from torch.nn.attention.varlen import varlen_attn  # noqa: F401
+          expected = os.environ["TORCH_VERSION"]
+          if not torch.__version__.startswith(expected):
+              raise SystemExit(f"expected torch {expected}, got {torch.__version__}")
+          if torch.version.cuda != os.environ["CUDA_VERSION"]:
+              raise SystemExit(f"expected CUDA {os.environ['CUDA_VERSION']}, got {torch.version.cuda}")
+          print("validated:", ", ".join(modules))
+          PY
+          docker run --rm "$IMAGE" pimm --help
+
+  test-standard-gpu:
+    needs: test-standard
+    if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Modal
+        run: python -m pip install modal==1.5.1
+
+      - name: Run the suite on Modal inside the published image
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          PIMM_IMAGE: youngsm/pimm:pytorch2.13.0-cuda12.6
+        run: modal run .github/scripts/modal_ci.py
+
   build-nersc:
     needs: lock
     if: needs.lock.outputs.build == 'true'
@@ -157,3 +224,50 @@ jobs:
         - registry: docker.io
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  test-nersc:
+    needs: build-nersc
+    if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: youngsm/pimm-nersc:pytorch2.13.0-cuda12.6
+      TORCH_VERSION: 2.13.0
+      CUDA_VERSION: "12.6"
+    steps:
+      - name: Validate imports, stack, MPI, and CLI
+        run: |
+          docker pull "$IMAGE"
+          docker run --rm --env TORCH_VERSION --env CUDA_VERSION "$IMAGE" python - <<'PY'
+          import importlib
+          import os
+
+          modules = [
+              "cnms",
+              "pointgroup_ops",
+              "pointops",
+              "pointrope",
+              "pytorch3d_ops",
+              "serialize_cuda",
+              "spconv",
+              "torch",
+              "torch_cluster",
+              "torch_scatter",
+              "torch_sparse",
+              "torchvision",
+              "pimm.models",
+              "mpi4py",
+          ]
+          for module in modules:
+              importlib.import_module(module)
+          import h5py
+          if not h5py.get_config().mpi:
+              raise SystemExit("h5py was built without MPI support")
+          import torch
+          expected = os.environ["TORCH_VERSION"]
+          if not torch.__version__.startswith(expected):
+              raise SystemExit(f"expected torch {expected}, got {torch.__version__}")
+          if torch.version.cuda != os.environ["CUDA_VERSION"]:
+              raise SystemExit(f"expected CUDA {os.environ['CUDA_VERSION']}, got {torch.version.cuda}")
+          print("validated:", ", ".join(modules))
+          PY
+          docker run --rm "$IMAGE" pimm --help
