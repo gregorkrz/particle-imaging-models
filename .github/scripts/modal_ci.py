@@ -10,7 +10,8 @@ Run locally with:
     uvx modal run .github/scripts/modal_ci.py
 
 Set PIMM_IMAGE to validate a published application image instead of the
-checkout; the suite then runs against the image's baked source and venv:
+checkout; the suite then runs in the image's venv with the checkout mounted,
+mirroring how containerized jobs use the image:
 
     PIMM_IMAGE=youngsm/pimm:pytorch2.13.0-cuda12.6 uvx modal run .github/scripts/modal_ci.py
 """
@@ -29,7 +30,8 @@ _here = Path(__file__).resolve()
 REPO_ROOT = _here.parents[2] if len(_here.parents) > 2 else _here.parent
 PIMM_IMAGE = os.environ.get("PIMM_IMAGE", "")
 if PIMM_IMAGE:
-    # the published image bakes the source and venv at these paths
+    # the published image ships only the venv; the checkout is mounted at the
+    # image's default bind point, mirroring how jobs run it
     REMOTE_ROOT = "/opt/pimm/src"
     VENV = "/opt/pimm/.venv"
 else:
@@ -65,8 +67,13 @@ def _sync_environment():
     In image mode this re-verifies the published image's venv against its
     lockfile and adds pytest on top.
     """
+    command = ["uv", "sync", "--locked", "--group", "dev"]
+    if PIMM_IMAGE:
+        # keep the published venv project-free; the suite imports the mounted
+        # checkout through PYTHONPATH, matching how jobs use the image
+        command.append("--no-install-project")
     subprocess.run(
-        ["uv", "sync", "--locked", "--group", "dev"],
+        command,
         cwd=REMOTE_ROOT,
         env={
             **os.environ,
@@ -91,6 +98,22 @@ if PIMM_IMAGE:
         # uv venv, so target Modal's interpreter explicitly
         .run_commands(
             f"/usr/local/bin/python -m pip install huggingface_hub uv=={UV_VERSION}"
+        )
+        .add_local_dir(
+            REPO_ROOT,
+            REMOTE_ROOT,
+            copy=True,
+            ignore=[
+                ".git",
+                ".venv",
+                ".venv*",
+                "**/__pycache__",
+                "**/*.pyc",
+                "**/build",
+                "**/*.egg-info",
+                "**/*.so",
+                "docs/build",
+            ],
         )
         .env(RUNTIME_ENV)
         .run_function(_sync_environment)

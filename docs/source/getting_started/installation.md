@@ -120,8 +120,8 @@ docker run --rm --gpus all -v "$PWD:$PWD" -w "$PWD" pimm:local \
   pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask
 ```
 
-The uv environment is stored at `/opt/pimm/.venv`, outside `/opt/pimm/src`.
-Binding a checkout over the image source therefore does not hide the installed environment.
+The image ships only the locked environment at `/opt/pimm/.venv` - no pimm source is baked in.
+Commands must run from inside a bound checkout, which the entrypoint places on `PYTHONPATH`.
 
 The NERSC image adds MPICH, parallel HDF5, `mpi4py`, and an MPI-enabled build of `h5py`:
 

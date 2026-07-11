@@ -95,9 +95,9 @@ Prebuilt images resolve from the same `uv.lock` as the local install.
 apptainer pull /path/to/pimm.sif docker://youngsm/pimm:pytorch2.13.0-cuda12.6
 ```
 
-The image installs `pimm` at `/opt/pimm/src` with its environment at
-`/opt/pimm/.venv`; bind your clone over `/opt/pimm/src` so commands import your
-code, not the baked-in copy. Build it yourself with:
+The image ships only the locked environment (at `/opt/pimm/.venv`) - no pimm
+source is baked in. Run commands from inside your clone (bound into the
+container) and they import your code. Build it yourself with:
 
 ```bash
 docker build -f .github/docker/Dockerfile -t pimm:local .   # or Dockerfile.nersc on Perlmutter
@@ -219,8 +219,9 @@ override syntax.
 Every login or submit host where you invoke `pimm launch` or `pimm submit` needs
 the launcher dependencies.
 Run `./install.sh --launcher-only`, then use `uv run pimm submit ...`.
-Containerized jobs bind `paths.repo_root` over `/opt/pimm/src` by default, while
-the image environment remains at `/opt/pimm/.venv`.
+Containerized jobs bind `paths.repo_root` at `container.repo_mount` (default
+`/opt/pimm/src`); the image itself carries only the environment at
+`/opt/pimm/.venv`.
 
 ## Exporting models
 

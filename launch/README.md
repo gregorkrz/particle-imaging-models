@@ -74,12 +74,11 @@ Use `--dry-run` to print the submitit manifest and `--output PATH` to write it.
 
 ## Container Repo Mounts
 
-The Docker images install `pimm` as an editable package at `/opt/pimm/src`.
-Containerized launch configs bind the host checkout at `paths.repo_root` onto
-`container.repo_mount`, which defaults to `/opt/pimm/src`, and run
-`scripts/train.sh` from that mounted path. This keeps `pimm launch`, imports, and
-training code pointed at the user's clone rather than the source snapshot baked
-into the image.
+The Docker images ship only the locked environment - no pimm source is baked
+in. Containerized launch configs bind the host checkout at `paths.repo_root`
+onto `container.repo_mount`, which defaults to `/opt/pimm/src`, and run
+`scripts/train.sh` from that mounted path, so `pimm launch`, imports, and
+training code always come from the user's clone.
 
 Manual Apptainer/Singularity use should preserve the same mount:
 
@@ -143,7 +142,7 @@ pimm submit \
 - `launch/sites/nersc.yaml`: NERSC paths, account/qos/constraint, Shifter, and
   Perlmutter environment variables.
 - `container.repo_mount`: in-container path where `paths.repo_root` is mounted
-  for editable `pimm` imports; defaults to `/opt/pimm/src`.
+  so `pimm` imports resolve to the checkout; defaults to `/opt/pimm/src`.
 - `launch/sites/local.yaml`: no scheduler/container wrapper; runs directly on
   the current node.
 - `launch/runs/*.yaml`: optional named launch recipes focused on execution
