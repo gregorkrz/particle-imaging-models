@@ -1,6 +1,6 @@
 _base_: slurm.yaml
 
-site: nersc
+site: nersc-container
 
 resources:
   cpus_per_proc: 6
@@ -11,13 +11,21 @@ slurm:
   qos: regular
   constraint: gpu
   gpu_directive: gpus-per-node
+  image: youngsm/pimm-nersc:main
+  module: gpu,nccl-plugin
 
-# bare metal: jobs use the checkout's uv-managed .venv, prepared once with
-# scripts/nersc_env.sh (MPI-enabled mpi4py and h5py against the Cray stack)
+# containerized alternative to the bare-metal nersc site: the frozen image
+# environment, for large-scale or pinned-artifact runs
 container:
-  runtime: none
+  runtime: shifter
+  image: youngsm/pimm-nersc:main
+  module: gpu,nccl-plugin
+  interpreter: /opt/pimm/.venv/bin/python
+  unset_env:
+    - LD_LIBRARY_PATH
+    - LD_PRELOAD
   setup:
-    - module load cray-mpich cray-hdf5-parallel nccl
+    - export LD_LIBRARY_PATH=/opt/hdf5/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
 env:
   # Perlmutter compute nodes reach huggingface.co but the

@@ -1,0 +1,28 @@
+_base_: slurm.yaml
+
+site: s3df-container
+
+resources:
+  nproc_per_node: 1 # 1 gpu
+  mem: 512G
+
+slurm:
+  account: mli:nu-ml-dev
+  partition: ampere
+
+# containerized alternative to the bare-metal s3df site: the frozen image
+# environment, for large-scale or pinned-artifact runs
+container:
+  runtime: singularity
+  image: /sdf/data/neutrino/youngsam/images/pimm_pytorch2.13.0-cuda12.6.sif
+  binds:
+    - /sdf
+    - /fs
+    - /sdf/scratch
+    - /lscratch
+  interpreter: /opt/pimm/.venv/bin/python
+
+env:
+  NCCL_SOCKET_IFNAME: "^docker0,lo"
+  REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
