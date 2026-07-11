@@ -15,6 +15,7 @@ ENV CUDA_HOME=/usr/local/cuda \
     PYTHONNOUSERSITE=1 \
     TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST} \
     UV_LINK_MODE=copy \
+    UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_PROJECT_ENVIRONMENT=/opt/pimm/.venv
 
 RUN rm -f /etc/apt/sources.list.d/*.list
