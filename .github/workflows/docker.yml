@@ -127,6 +127,8 @@ jobs:
     needs: build-standard
     if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
     env:
       IMAGE: youngsm/pimm:pytorch2.13.0-cuda12.6
       TORCH_VERSION: 2.13.0
@@ -176,6 +178,11 @@ jobs:
             echo "pimm unexpectedly worked without a checkout" >&2
             exit 1
           fi
+      # the GPU job must test this exact build: tags are mutable rolling
+      # aliases and Modal caches registry pulls by reference
+      - name: Capture image digest
+        id: digest
+        run: echo "digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE")" >> "$GITHUB_OUTPUT"
 
   test-standard-gpu:
     needs: test-standard
@@ -197,7 +204,7 @@ jobs:
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-          PIMM_IMAGE: youngsm/pimm:pytorch2.13.0-cuda12.6
+          PIMM_IMAGE: ${{ needs.test-standard.outputs.digest }}
         run: modal run .github/scripts/modal_ci.py
 
   build-nersc:
