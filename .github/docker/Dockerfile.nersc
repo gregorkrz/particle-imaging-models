@@ -50,14 +50,8 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --group nersc --no-install-project
 
-RUN MPI4PY_VERSION="$(python -c 'import importlib.metadata as m; print(m.version("mpi4py"))')" \
-  && H5PY_VERSION="$(python -c 'import importlib.metadata as m; print(m.version("h5py"))')" \
-  && MPICC=mpicc uv pip install --python /opt/pimm/.venv/bin/python --reinstall \
-      --no-cache --no-binary mpi4py "mpi4py==${MPI4PY_VERSION}" \
-  && HDF5_MPI=ON HDF5_VERSION=1.14.6 CC=mpicc \
-      uv pip install --python /opt/pimm/.venv/bin/python --reinstall \
-      --no-cache --no-binary h5py "h5py==${H5PY_VERSION}" \
-  && python -c "import h5py, mpi4py; assert h5py.get_config().mpi"
+COPY scripts/nersc_env.sh scripts/nersc_env.sh
+RUN HDF5_VERSION=1.14.6 bash scripts/nersc_env.sh
 
 COPY .github/docker/pimm /usr/local/bin/pimm
 COPY .github/docker/entrypoint.sh /opt/pimm/entrypoint.sh

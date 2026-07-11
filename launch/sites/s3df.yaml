@@ -10,17 +10,9 @@ slurm:
   account: mli:nu-ml-dev
   partition: ampere
 
+# bare metal: jobs use the checkout's uv-managed .venv directly
 container:
-  runtime: singularity
-  image: /sdf/data/neutrino/youngsam/images/pimm_pytorch2.13.0-cuda12.6.sif
-  binds:
-    - /sdf
-    - /fs
-    - /sdf/scratch
-    - /lscratch
-  interpreter: /opt/pimm/.venv/bin/python
+  runtime: none
 
 env:
   NCCL_SOCKET_IFNAME: "^docker0,lo"
-  REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
-  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt

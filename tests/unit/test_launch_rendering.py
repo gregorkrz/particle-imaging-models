@@ -61,7 +61,7 @@ def test_generic_slurm_uv_rendering():
 
 
 def test_s3df_apptainer_rendering():
-    cfg = _config("s3df", executor="batch")
+    cfg = _config("s3df-container", executor="batch")
 
     manifest = _manifest(cfg)
     params = manifest["parameters"]
@@ -77,7 +77,7 @@ def test_s3df_apptainer_rendering():
 
 
 def test_nersc_shifter_rendering():
-    cfg = _config("nersc", executor="batch")
+    cfg = _config("nersc-container", executor="batch")
 
     manifest = _manifest(cfg)
     params = manifest["parameters"]

@@ -137,10 +137,15 @@ pimm submit \
 - `launch/defaults.yaml`: common launcher defaults.
 - `launch/sites/slurm.yaml`: generic Slurm defaults for resources, logs, and
   environment; cluster-specific Slurm sites inherit from this with `_base_`.
-- `launch/sites/s3df.yaml`: S3DF repo/checkpoint paths, account/partition,
-  Singularity, optional remote submit setup, and S3DF environment variables.
-- `launch/sites/nersc.yaml`: NERSC paths, account/qos/constraint, Shifter, and
-  Perlmutter environment variables.
+- `launch/sites/s3df.yaml`: S3DF account/partition and environment variables;
+  bare metal, jobs run in the checkout's uv-managed `.venv`.
+- `launch/sites/s3df-container.yaml`: containerized S3DF alternative
+  (Singularity, frozen image environment) for large-scale or pinned runs.
+- `launch/sites/nersc.yaml`: NERSC account/qos/constraint and Perlmutter
+  environment variables; bare metal, using the `.venv` prepared once with
+  `scripts/nersc_env.sh`.
+- `launch/sites/nersc-container.yaml`: containerized NERSC alternative
+  (Shifter, frozen image environment) for large-scale or pinned runs.
 - `container.repo_mount`: in-container path where `paths.repo_root` is mounted
   so `pimm` imports resolve to the checkout; defaults to `/opt/pimm/src`.
 - `launch/sites/local.yaml`: no scheduler/container wrapper; runs directly on

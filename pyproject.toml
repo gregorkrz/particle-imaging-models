@@ -79,7 +79,6 @@ default-groups = ["train"]
 concurrent-builds = 1
 cache-keys = [
     { file = "pyproject.toml" },
-    { file = "pimm/**/*.py" },
 ]
 environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
