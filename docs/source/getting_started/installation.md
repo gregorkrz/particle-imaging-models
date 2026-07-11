@@ -39,12 +39,35 @@ Or run the installer from an existing checkout:
 ./install.sh
 ```
 
-The installer:
+### Manual installation
 
-1. Installs uv with the official Astral installer if uv is not already available.
-2. Clones the repository if the installer is run outside a checkout.
-3. Creates `.venv` and installs the prebuilt wheels recorded in `uv.lock`.
-4. Verifies the CUDA packages and extensions can be imported.
+The installer only chains the following commands; run them yourself for full control.
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
+cd particle-imaging-models
+```
+
+2. Install [uv](https://docs.astral.sh/uv/) with the official Astral installer:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
+```
+
+3. Create `.venv` and install the prebuilt wheels recorded in `uv.lock` (uv also provides Python 3.10):
+
+```bash
+uv sync --locked
+```
+
+4. Verify the CUDA packages and extensions import:
+
+```bash
+uv run python -c "import cnms, pointgroup_ops, pointops, pointrope, pytorch3d_ops, serialize_cuda, spconv, torch, torch_cluster, torch_scatter, torch_sparse"
+```
 
 Run project commands through uv without activating the environment:
 
@@ -83,6 +106,12 @@ Install the small launcher environment with:
 ```bash
 ./install.sh --launcher-only
 uv run pimm submit --help
+```
+
+Or directly, from a checkout with uv installed:
+
+```bash
+uv sync --locked --no-default-groups
 ```
 
 The full training environment remains inside the selected container on compute nodes.
@@ -170,6 +199,15 @@ cp example.env .env
 - `PIMM_DISABLE_SERIALIZE_CUDA=1` disables the optional CUDA serialization backend.
 
 ## Troubleshooting
+
+:::{dropdown} ``error: Failed to spawn: `pimm` ``
+`uv run` resolves commands from the project in the current directory, so outside the checkout it finds no `pimm`.
+Run pimm commands from inside the `particle-imaging-models` checkout, or point uv at it explicitly:
+
+```bash
+uv run --project /path/to/particle-imaging-models pimm --help
+```
+:::
 
 :::{dropdown} the training packages are missing
 The training stack (`train`) is a default dependency group, so a plain `uv sync --locked` installs it.

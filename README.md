@@ -60,7 +60,9 @@ curl -sSL https://raw.githubusercontent.com/DeepLearnPhysics/particle-imaging-mo
 
 It installs uv, clones the repo, and syncs the locked environment.
 
-Run everything through `uv run` (no need to activate the environment):
+Run everything through `uv run` from inside the checkout (no need to activate
+the environment; from elsewhere, `uv run` cannot find the project and fails
+with ``error: Failed to spawn: `pimm` ``):
 
 ```bash
 uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \
@@ -72,18 +74,44 @@ also reachable as `uv run python -m pimm.cli <cmd>`.
 
 <details>
 <summary>Manual install</summary>
+<br>
+
+1. Clone the repository
 
 ```bash
 git clone https://github.com/DeepLearnPhysics/particle-imaging-models.git
 cd particle-imaging-models
-
-./install.sh                    # full GPU environment
-./install.sh --launcher-only    # pimm launch/submit without training packages
 ```
 
-`install.sh` installs uv if missing, validates the system dependencies, and
-creates `.venv` from `uv.lock`. Set `SKIP_CLONE=1` to install into the current
-directory, or `PIMM_REPO` / `PIMM_BRANCH` to target a fork or branch.
+2. Install [uv](https://docs.astral.sh/uv/)
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
+```
+
+3. Install the locked environment (Linux x86_64; prebuilt CUDA wheels, nothing compiles)
+
+```bash
+uv sync --locked
+```
+
+On a login or submit host that only runs `pimm launch` / `pimm submit`, install
+the small launcher environment instead:
+
+```bash
+uv sync --locked --no-default-groups
+```
+
+4. Verify the CUDA stack imports
+
+```bash
+uv run python -c "import cnms, pointgroup_ops, pointops, pointrope, pytorch3d_ops, serialize_cuda, spconv, torch, torch_cluster, torch_scatter, torch_sparse"
+```
+
+`./install.sh` runs exactly these steps (plus the platform check); set
+`SKIP_CLONE=1` to install into the current directory, or `PIMM_REPO` /
+`PIMM_BRANCH` to target a fork or branch.
 </details>
 
 <details>
