@@ -87,7 +87,11 @@ if PIMM_IMAGE:
     # re-imports this module) sees PIMM_IMAGE and resolves the image-mode paths.
     image = (
         modal.Image.from_registry(PIMM_IMAGE, add_python="3.10")
-        .pip_install("huggingface_hub", f"uv=={UV_VERSION}")
+        # not pip_install: the image's PATH resolves `python` to its pip-less
+        # uv venv, so target Modal's interpreter explicitly
+        .run_commands(
+            f"/usr/local/bin/python -m pip install huggingface_hub uv=={UV_VERSION}"
+        )
         .env(RUNTIME_ENV)
         .run_function(_sync_environment)
     )

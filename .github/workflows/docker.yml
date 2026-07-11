@@ -136,7 +136,7 @@ jobs:
       - name: Validate imports, stack, and CLI
         run: |
           docker pull "$IMAGE"
-          docker run --rm --env TORCH_VERSION --env CUDA_VERSION "$IMAGE" python - <<'PY'
+          docker run --rm -i --env TORCH_VERSION --env CUDA_VERSION "$IMAGE" python - <<'PY'
           import importlib
           import os
 
@@ -237,7 +237,7 @@ jobs:
       - name: Validate imports, stack, MPI, and CLI
         run: |
           docker pull "$IMAGE"
-          docker run --rm --env TORCH_VERSION --env CUDA_VERSION "$IMAGE" python - <<'PY'
+          docker run --rm -i --env TORCH_VERSION --env CUDA_VERSION "$IMAGE" python - <<'PY'
           import importlib
           import os
 
