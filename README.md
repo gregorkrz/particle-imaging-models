@@ -60,7 +60,9 @@ curl -sSL https://raw.githubusercontent.com/DeepLearnPhysics/particle-imaging-mo
 
 It installs uv, clones the repo, and syncs the locked environment.
 
-Run everything through `uv run` (no need to activate the environment):
+Run everything through `uv run` from inside the checkout (no need to activate
+the environment; from elsewhere, `uv run` cannot find the project and fails
+with ``error: Failed to spawn: `pimm` ``):
 
 ```bash
 uv run pimm launch --train.config panda/pretrain/pretrain-sonata-v1m1-pilarnet-smallmask \

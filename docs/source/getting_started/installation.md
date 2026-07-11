@@ -200,6 +200,15 @@ cp example.env .env
 
 ## Troubleshooting
 
+:::{dropdown} ``error: Failed to spawn: `pimm` ``
+`uv run` resolves commands from the project in the current directory, so outside the checkout it finds no `pimm`.
+Run pimm commands from inside the `particle-imaging-models` checkout, or point uv at it explicitly:
+
+```bash
+uv run --project /path/to/particle-imaging-models pimm --help
+```
+:::
+
 :::{dropdown} the training packages are missing
 The training stack (`train`) is a default dependency group, so a plain `uv sync --locked` installs it.
 If a host only needs the launcher, `uv sync --locked --no-default-groups` installs the minimal environment instead.
