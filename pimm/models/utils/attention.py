@@ -34,10 +34,25 @@ def flash_attn_varlen_func(
         )
     if causal:
         window_size = (window_size[0], 0)
-    return varlen_attn(
+    # torch's varlen kernels require head_dim % 8 == 0. Zero-padding the head
+    # dimension is exact: padded dims contribute nothing to q.k scores, and the
+    # padded value dims are sliced off. The softmax scale must be pinned to the
+    # original head_dim before padding changes the default.
+    head_dim = q.shape[-1]
+    pad = -head_dim % 8
+    if pad:
+        if softmax_scale is None:
+            softmax_scale = head_dim**-0.5
+        q, k, v = (
+            torch.nn.functional.pad(tensor, (0, pad)) for tensor in (q, k, v)
+        )
+    out = varlen_attn(
         q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
         scale=softmax_scale, window_size=tuple(window_size),
     )
+    if pad:
+        out = out[..., :head_dim]
+    return out
 
 
 def flash_attn_varlen_qkvpacked_func(
@@ -50,8 +65,19 @@ def flash_attn_varlen_qkvpacked_func(
     window_size: tuple[int, int] = (-1, -1),
 ) -> torch.Tensor:
     """Self-attention over packed qkv of shape (total, 3, heads, head_dim)."""
+    # pad the packed tensor before unbinding: one allocation and one backward
+    # op instead of three (see the head_dim note in flash_attn_varlen_func)
+    head_dim = qkv.shape[-1]
+    pad = -head_dim % 8
+    if pad:
+        if softmax_scale is None:
+            softmax_scale = head_dim**-0.5
+        qkv = torch.nn.functional.pad(qkv, (0, pad))
     q, k, v = qkv.unbind(dim=1)
-    return flash_attn_varlen_func(
+    out = flash_attn_varlen_func(
         q, k, v, cu_seqlens, cu_seqlens, max_seqlen, max_seqlen,
         dropout_p, softmax_scale, causal, window_size,
     )
+    if pad:
+        out = out[..., :head_dim]
+    return out
