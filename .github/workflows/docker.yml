@@ -12,7 +12,6 @@ on:
     paths:
       - '.github/docker/**'
       - '.python-version'
-      - 'pimm/**'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/docker.yml'
@@ -133,10 +132,15 @@ jobs:
       TORCH_VERSION: 2.13.0
       CUDA_VERSION: "12.6"
     steps:
+      # the image ships only the environment; pimm code comes from the checkout
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
       - name: Validate imports, stack, and CLI
         run: |
           docker pull "$IMAGE"
-          docker run --rm -i --env TORCH_VERSION --env CUDA_VERSION "$IMAGE" python - <<'PY'
+          docker run --rm -i --env TORCH_VERSION --env CUDA_VERSION \
+            -v "$GITHUB_WORKSPACE:/work" -w /work "$IMAGE" python - <<'PY'
           import importlib
           import os
 
@@ -166,7 +170,12 @@ jobs:
               raise SystemExit(f"expected CUDA {os.environ['CUDA_VERSION']}, got {torch.version.cuda}")
           print("validated:", ", ".join(modules))
           PY
-          docker run --rm "$IMAGE" pimm --help
+          docker run --rm -v "$GITHUB_WORKSPACE:/work" -w /work "$IMAGE" pimm --help
+          # without a bound checkout the CLI must fail with a clear error
+          if docker run --rm "$IMAGE" pimm --help 2>/dev/null; then
+            echo "pimm unexpectedly worked without a checkout" >&2
+            exit 1
+          fi
 
   test-standard-gpu:
     needs: test-standard
@@ -234,10 +243,15 @@ jobs:
       TORCH_VERSION: 2.13.0
       CUDA_VERSION: "12.6"
     steps:
+      # the image ships only the environment; pimm code comes from the checkout
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
       - name: Validate imports, stack, MPI, and CLI
         run: |
           docker pull "$IMAGE"
-          docker run --rm -i --env TORCH_VERSION --env CUDA_VERSION "$IMAGE" python - <<'PY'
+          docker run --rm -i --env TORCH_VERSION --env CUDA_VERSION \
+            -v "$GITHUB_WORKSPACE:/work" -w /work "$IMAGE" python - <<'PY'
           import importlib
           import os
 
@@ -270,4 +284,4 @@ jobs:
               raise SystemExit(f"expected CUDA {os.environ['CUDA_VERSION']}, got {torch.version.cuda}")
           print("validated:", ", ".join(modules))
           PY
-          docker run --rm "$IMAGE" pimm --help
+          docker run --rm -v "$GITHUB_WORKSPACE:/work" -w /work "$IMAGE" pimm --help

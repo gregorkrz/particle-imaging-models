@@ -19,11 +19,10 @@ export -f conda mamba micromamba
 # Also prevent user site-packages from leaking in
 export PYTHONNOUSERSITE=1
 
-# If the current directory is a pimm checkout, prefer it as the source so users
-# don't have to bind their clone over /opt/pimm/src. `import pimm` then resolves
-# to the cwd checkout (PYTHONPATH precedes the baked-in editable install); if the
-# cwd is not a checkout, the image's /opt/pimm/src is used as before. Set
-# PIMM_NO_CWD=1 to opt out.
+# The image ships no pimm source: when the current directory is a pimm
+# checkout (bound by the user or by pimm submit), put it on PYTHONPATH so
+# `import pimm` and the `pimm` shim resolve to it. Set PIMM_NO_CWD=1 to opt
+# out.
 if [ -z "${PIMM_NO_CWD:-}" ] \
    && [ -f "$PWD/pimm/__init__.py" ] \
    && [ -f "$PWD/launch/defaults.yaml" ]; then

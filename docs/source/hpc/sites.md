@@ -101,11 +101,11 @@ anything hits the queue.
 (container-repo-mounts)=
 ## Container repo mounts
 
-The Docker images install `pimm` editable at `/opt/pimm/src`. Containerized
-launch configs bind your host checkout (`paths.repo_root`) onto
-`container.repo_mount` (default `/opt/pimm/src`) and run `scripts/train.sh` from
-there - so imports and training code point at *your* clone, not the snapshot
-baked into the image.
+The Docker images ship only the locked environment - no pimm source is baked
+in. Containerized launch configs bind your host checkout (`paths.repo_root`)
+onto `container.repo_mount` (default `/opt/pimm/src`) and run
+`scripts/train.sh` from there, so imports and training code always point at
+*your* clone.
 
 Manual container use should preserve the same mount, e.g. with Apptainer / Singularity:
 

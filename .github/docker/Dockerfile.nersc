@@ -43,15 +43,13 @@ ENV HDF5_DIR=/opt/hdf5
 ENV PATH=/opt/hdf5/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/hdf5/lib:$LD_LIBRARY_PATH
 
-WORKDIR /opt/pimm/src
+# the image ships only the locked environment: no pimm source is baked in,
+# so code always comes from a bound checkout (entrypoint puts cwd on PYTHONPATH)
+WORKDIR /opt/pimm
 COPY pyproject.toml uv.lock .python-version ./
-COPY libs/ ./libs/
-COPY pimm/ ./pimm/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --group nersc
+    uv sync --locked --group nersc --no-install-project
 
-COPY --exclude=libs --exclude=pimm --exclude=pyproject.toml --exclude=uv.lock \
-    --exclude=.python-version . /opt/pimm/src
 RUN MPI4PY_VERSION="$(python -c 'import importlib.metadata as m; print(m.version("mpi4py"))')" \
   && H5PY_VERSION="$(python -c 'import importlib.metadata as m; print(m.version("h5py"))')" \
   && MPICC=mpicc uv pip install --python /opt/pimm/.venv/bin/python --reinstall \
@@ -61,7 +59,11 @@ RUN MPI4PY_VERSION="$(python -c 'import importlib.metadata as m; print(m.version
       --no-cache --no-binary h5py "h5py==${H5PY_VERSION}" \
   && python -c "import h5py, mpi4py; assert h5py.get_config().mpi"
 
+COPY .github/docker/pimm /usr/local/bin/pimm
 COPY .github/docker/entrypoint.sh /opt/pimm/entrypoint.sh
-RUN chmod +x /opt/pimm/entrypoint.sh
+RUN chmod +x /usr/local/bin/pimm /opt/pimm/entrypoint.sh
+
+# default mount point for containerized jobs that bind the checkout
+WORKDIR /opt/pimm/src
 ENTRYPOINT ["/opt/pimm/entrypoint.sh"]
 CMD ["bash"]

@@ -21,17 +21,18 @@ RUN rm -f /etc/apt/sources.list.d/*.list
 COPY .github/docker/common /opt/pimm/.github/docker/common
 RUN bash /opt/pimm/.github/docker/common/install_system.sh
 
-WORKDIR /opt/pimm/src
+# the image ships only the locked environment: no pimm source is baked in,
+# so code always comes from a bound checkout (entrypoint puts cwd on PYTHONPATH)
+WORKDIR /opt/pimm
 COPY pyproject.toml uv.lock .python-version ./
-COPY libs/ ./libs/
-COPY pimm/ ./pimm/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked
+    uv sync --locked --no-install-project
 
-COPY --exclude=libs --exclude=pimm --exclude=pyproject.toml --exclude=uv.lock \
-    --exclude=.python-version . /opt/pimm/src
-
+COPY .github/docker/pimm /usr/local/bin/pimm
 COPY .github/docker/entrypoint.sh /opt/pimm/entrypoint.sh
-RUN chmod +x /opt/pimm/entrypoint.sh
+RUN chmod +x /usr/local/bin/pimm /opt/pimm/entrypoint.sh
+
+# default mount point for containerized jobs that bind the checkout
+WORKDIR /opt/pimm/src
 ENTRYPOINT ["/opt/pimm/entrypoint.sh"]
 CMD ["bash"]
