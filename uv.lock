@@ -11,7 +11,7 @@ supported-markers = [
 ]
 
 [options]
-exclude-newer = "2026-07-05T18:14:10.526907768Z"
+exclude-newer = "2026-07-05T18:23:18.053124417Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -1661,7 +1661,7 @@ wheels = [
 
 [[package]]
 name = "pimm"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "addict", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
