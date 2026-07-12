@@ -214,6 +214,11 @@ class Trainer(TrainerBase):
             sub-configs, and the distributed/AMP settings.
     """
 
+    # Set when the train dataset is an IterableDataset (streaming). Affects loader
+    # construction (no sampler) and epoch-length accounting (see _iters_per_epoch).
+    _train_is_iterable = False
+    _iter_per_epoch_value = None
+
     def __init__(self, cfg):
         """Build model, data loaders, optimizer, scheduler, hooks, and writer."""
         super(Trainer, self).__init__()
@@ -264,7 +269,7 @@ class Trainer(TrainerBase):
             self.before_train()
             
             # Keep metric writers aligned with the absolute optimization step.
-            iter_per_epoch = len(self.train_loader)
+            iter_per_epoch = self._iters_per_epoch()
             resumed_iter = self.global_step or (
                 self.start_epoch * iter_per_epoch + self.start_iter
             )
@@ -307,6 +312,13 @@ class Trainer(TrainerBase):
                     # Capture the next resume point before checkpoint hooks run.
                     self._record_step_state()
                     self.after_step()
+                    # Iterable streams have no natural length; cap the epoch at a
+                    # fixed step count so every DDP rank stops together (avoids a
+                    # collective-op hang on uneven per-rank shard lengths).
+                    if self._train_is_iterable and (
+                        self.comm_info["iter"] + 1
+                    ) >= iter_per_epoch:
+                        break
                 self.start_iter = 0
                 self.after_epoch()
             self.after_train()
@@ -321,7 +333,7 @@ class Trainer(TrainerBase):
 
     def _record_step_state(self):
         """Update checkpointable counters for the next batch to consume."""
-        iter_per_epoch = int(self.comm_info.get("iter_per_epoch", len(self.train_loader)))
+        iter_per_epoch = int(self.comm_info.get("iter_per_epoch", self._iters_per_epoch()))
         iter_in_epoch = int(self.comm_info.get("iter", 0)) + 1
         self.global_step = self.epoch * iter_per_epoch + iter_in_epoch
 
@@ -441,7 +453,22 @@ class Trainer(TrainerBase):
     def build_train_loader(self):
         """Build the stateful training loader used for mid-epoch resume."""
         train_data = build_dataset(self.cfg.data.train)
+        return self._build_stateful_train_loader(
+            train_data, partial(collate_fn, mix_prob=self.cfg.mix_prob)
+        )
 
+    def _build_stateful_train_loader(self, train_data, collate_fn, **loader_kwargs):
+        """Build a ``StatefulDataLoader`` for a map-style OR an iterable train
+        dataset. Extra ``loader_kwargs`` (e.g. ``in_order``) pass through to the
+        ``StatefulDataLoader``.
+
+        Map-style datasets get a rank-aware ``StatefulRandomSampler`` (shuffle +
+        checkpointable position). ``IterableDataset``s get no sampler -- they own
+        shuffling and DDP/worker sharding internally (see the dataset's
+        ``__iter__``); ``drop_last`` plus the ``iter_per_epoch`` cap in
+        :meth:`train` keeps every rank's step count uniform for DDP lockstep.
+        Works for any ``IterableDataset``, not just the parquet one.
+        """
         init_fn = (
             partial(
                 worker_init_fn,
@@ -452,29 +479,70 @@ class Trainer(TrainerBase):
             if self.cfg.seed is not None
             else None
         )
+        common = dict(
+            batch_size=self.cfg.batch_size_per_gpu,
+            num_workers=self.cfg.num_worker_per_gpu,
+            collate_fn=collate_fn,
+            pin_memory=True,
+            worker_init_fn=init_fn,
+            persistent_workers=(self.cfg.num_worker_per_gpu > 0),
+            snapshot_every_n_steps=self.cfg.get("dataloader_snapshot_every_n_steps", 1),
+        )
+        common.update(loader_kwargs)
+        if isinstance(train_data, torch.utils.data.IterableDataset):
+            self._train_is_iterable = True
+            return StatefulDataLoader(train_data, drop_last=True, **common)
 
-        # Stateful sampler/loader snapshots let checkpoints resume mid-epoch.
+        self._train_is_iterable = False
+        drop_last = len(train_data) > self.cfg.batch_size
         sampler = StatefulRandomSampler(
             train_data,
             shuffle=True,
             seed=self.cfg.seed if self.cfg.seed is not None else 0,
             num_replicas=comm.get_world_size(),
             rank=comm.get_rank(),
-            drop_last=len(train_data) > self.cfg.batch_size,
+            drop_last=drop_last,
         )
-        train_loader = StatefulDataLoader(
-            train_data,
-            batch_size=self.cfg.batch_size_per_gpu,
-            sampler=sampler,
-            num_workers=self.cfg.num_worker_per_gpu,
-            collate_fn=partial(collate_fn, mix_prob=self.cfg.mix_prob),
-            pin_memory=True,
-            worker_init_fn=init_fn,
-            drop_last=len(train_data) > self.cfg.batch_size,
-            persistent_workers=(self.cfg.num_worker_per_gpu > 0),
-            snapshot_every_n_steps=self.cfg.get("dataloader_snapshot_every_n_steps", 1),
+        return StatefulDataLoader(
+            train_data, sampler=sampler, drop_last=drop_last, **common
         )
-        return train_loader
+
+    def _iters_per_epoch(self):
+        """Optimizer steps per epoch on THIS rank (cached).
+
+        Map-style: ``len(train_loader)``. Iterable: ``cfg.iters_per_epoch`` when
+        set, else derived from the dataset's ``num_samples()`` floored per rank
+        (``num_samples // world_size // batch_size_per_gpu``) so every rank runs
+        the same count -- required for DDP lockstep. Raises if an iterable train
+        dataset provides neither.
+        """
+        if self._iter_per_epoch_value is not None:
+            return self._iter_per_epoch_value
+        if not self._train_is_iterable:
+            val = len(self.train_loader)
+        else:
+            cfg_ipe = self.cfg.get("iters_per_epoch", None)
+            if cfg_ipe:
+                val = int(cfg_ipe)
+            else:
+                dataset = getattr(self.train_loader, "dataset", None)
+                num_samples = getattr(dataset, "num_samples", None)
+                if not callable(num_samples):
+                    raise ValueError(
+                        "Iterable train dataset requires `iters_per_epoch` in the "
+                        "config, or a `num_samples()` method on the dataset."
+                    )
+                world = max(1, comm.get_world_size())
+                per_rank = int(num_samples()) // world
+                val = per_rank // self.cfg.batch_size_per_gpu
+                if val <= 0:
+                    raise ValueError(
+                        f"Derived iters_per_epoch={val} <= 0 (num_samples per "
+                        f"rank={per_rank}, batch_per_gpu={self.cfg.batch_size_per_gpu})."
+                    )
+            self.logger.info(f"Iterable train loader: iters_per_epoch={val}")
+        self._iter_per_epoch_value = val
+        return val
 
     def build_val_loader(self):
         """Build the optional validation loader."""
@@ -526,7 +594,7 @@ class Trainer(TrainerBase):
         """Build a scheduler sized to all optimizer steps in training."""
         assert hasattr(self, "optimizer")
         assert hasattr(self, "train_loader")
-        self.cfg.scheduler.total_steps = len(self.train_loader) * self.cfg.epoch
+        self.cfg.scheduler.total_steps = self._iters_per_epoch() * self.cfg.epoch
         return build_scheduler(self.cfg.scheduler, self.optimizer)
 
     def build_scaler(self):
@@ -938,42 +1006,12 @@ class InsegTrainer(Trainer):
     def build_train_loader(self):
         """Build the stateful instance-segmentation training loader."""
         train_data = build_dataset(self.cfg.data.train)
-
-        init_fn = (
-            partial(
-                worker_init_fn,
-                num_workers=self.cfg.num_worker_per_gpu,
-                rank=comm.get_rank(),
-                seed=self.cfg.seed,
-            )
-            if self.cfg.seed is not None
-            else None
-        )
-
-        # Use our custom collate function for instance segmentation
-        sampler = StatefulRandomSampler(
+        return self._build_stateful_train_loader(
             train_data,
-            shuffle=True,
-            seed=self.cfg.seed if self.cfg.seed is not None else 0,
-            num_replicas=comm.get_world_size(),
-            rank=comm.get_rank(),
-            drop_last=len(train_data) > self.cfg.batch_size,
-        )
-        train_loader = StatefulDataLoader(
-            train_data,
-            batch_size=self.cfg.batch_size_per_gpu,
-            sampler=sampler,
-            num_workers=self.cfg.num_worker_per_gpu,
-            collate_fn=partial(inseg_collate_fn, mix_prob=self.cfg.mix_prob),
-            pin_memory=True,
-            worker_init_fn=init_fn,
-            drop_last=len(train_data) > self.cfg.batch_size,
-            persistent_workers=(self.cfg.num_worker_per_gpu > 0),
+            partial(inseg_collate_fn, mix_prob=self.cfg.mix_prob),
             in_order=self.cfg.deterministic,
-            snapshot_every_n_steps=self.cfg.get("dataloader_snapshot_every_n_steps", 1),
         )
-        return train_loader
-    
+
     def build_val_loader(self):
         """Build the optional instance-segmentation validation loader."""
         val_loader = None
@@ -1011,39 +1049,9 @@ class ImageClassTrainer(Trainer):
     def build_train_loader(self):
         """Build the stateful image-classification training loader."""
         train_data = build_dataset(self.cfg.data.train)
-
-        init_fn = (
-            partial(
-                worker_init_fn,
-                num_workers=self.cfg.num_worker_per_gpu,
-                rank=comm.get_rank(),
-                seed=self.cfg.seed,
-            )
-            if self.cfg.seed is not None
-            else None
+        return self._build_stateful_train_loader(
+            train_data, torch.utils.data.default_collate
         )
-
-        sampler = StatefulRandomSampler(
-            train_data,
-            shuffle=True,
-            seed=self.cfg.seed if self.cfg.seed is not None else 0,
-            num_replicas=comm.get_world_size(),
-            rank=comm.get_rank(),
-            drop_last=len(train_data) > self.cfg.batch_size,
-        )
-        train_loader = StatefulDataLoader(
-            train_data,
-            batch_size=self.cfg.batch_size_per_gpu,
-            sampler=sampler,
-            num_workers=self.cfg.num_worker_per_gpu,
-            collate_fn=torch.utils.data.default_collate,
-            pin_memory=True,
-            worker_init_fn=init_fn,
-            drop_last=len(train_data) > self.cfg.batch_size,
-            persistent_workers=(self.cfg.num_worker_per_gpu > 0),
-            snapshot_every_n_steps=self.cfg.get("dataloader_snapshot_every_n_steps", 1),
-        )
-        return train_loader
 
     def build_val_loader(self):
         """Build the optional image-classification validation loader."""

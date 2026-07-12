@@ -227,3 +227,9 @@ def set_dataloader_epoch(loader: DataLoader, epoch: int, *, reset_position: bool
             sampler.set_epoch(epoch, reset_position=reset_position)
         except TypeError:
             sampler.set_epoch(epoch)
+        return
+    # Iterable datasets have no sampler; reshuffle via the dataset itself so any
+    # IterableDataset exposing set_epoch (HF-backed or otherwise) reseeds.
+    dataset = getattr(loader, "dataset", None)
+    if hasattr(dataset, "set_epoch"):
+        dataset.set_epoch(epoch)

@@ -73,7 +73,7 @@ Run project commands through uv without activating the environment:
 
 ```bash
 uv run pimm launch --help
-uv run python scripts/download_pilarnet.py --help
+uv run python scripts/pilarnet/download.py --help
 ```
 
 You can also activate `.venv` and use `pimm` or `python` directly:

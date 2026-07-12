@@ -17,7 +17,7 @@ See {doc}`installation` for the full environment-variable table.
 Download PILArNet-M so training has data on disk:
 
 ```bash
-uv run python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dataset
+uv run python scripts/pilarnet/download.py --version v2 --output-dir /path/to/dataset
 ```
 
 Set `PILARNET_DATA_ROOT_V2` in `.env` to the downloaded directory.

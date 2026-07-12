@@ -1,12 +1,7 @@
-"""
-PILArNet-M Dataset
-
-This module handles the PILArNet-M dataset for particle physics point cloud segmentation.
-"""
+"""PILArNet-M dataset read directly from clustered HDF5 shards."""
 
 import glob
 import os
-import random
 from copy import deepcopy
 from pathlib import Path
 from typing import Literal
@@ -17,15 +12,14 @@ from torch.utils.data import Dataset
 
 from pimm.utils.logger import get_root_logger
 
-from .builder import DATASETS
-from .transform import TRANSFORMS, Compose
-
-# priority for voxel deduplication: track (1) > shower (0) > michel (2) > delta (3) > led (4)
-DEFAULT_LABEL_PRIORITY = {1: 0, 0: 1, 2: 2, 3: 3, 4: 4}
+from ..builder import DATASETS
+from ..transform import TRANSFORMS, Compose
+from .decode import decode_event
+from .overlay import PILArNetOverlayMixin
 
 
 @DATASETS.register_module()
-class PILArNetH5Dataset(Dataset):
+class PILArNetH5Dataset(PILArNetOverlayMixin, Dataset):
     """PILArNet-M LArTPC dataset read directly from clustered HDF5 shards.
 
     Loads events straight from ``point``/``cluster``/``cluster_extra`` HDF5
@@ -142,7 +136,7 @@ class PILArNetH5Dataset(Dataset):
                 raise RuntimeError(
                     f"\nPILArNet data root not found for revision '{revision}'.\n\n"
                     f"Option 1 - Download the dataset (saves to ~/.cache/pimm/pilarnet/{revision}):\n"
-                    f"    python scripts/download_pilarnet.py --version {revision}\n\n"
+                    f"    python scripts/pilarnet/download.py --version {revision}\n\n"
                     f"Option 2 - Set the environment variable:\n"
                     f'    export {env_var}="/path/to/pilarnet/{revision}/data"\n\n'
                     f"Option 3 - Pass data_root directly in your config:\n"
@@ -155,7 +149,7 @@ class PILArNetH5Dataset(Dataset):
         self.loop = loop if not test_mode else 1
         self.ignore_index = ignore_index
         self.old_pid_mapping = old_pid_mapping
-        
+
         self.revision = revision
         if test_mode:
             self.test_voxelize = TRANSFORMS.build(self.test_cfg.voxelize)
@@ -262,7 +256,7 @@ class PILArNetH5Dataset(Dataset):
 
     def get_data(self, idx):
         """Load a point cloud from h5 file.
-        
+
         Output dictionary:
         - coord: (N, 3) array of coordinates
         - energy: (N, 1) array of energies
@@ -288,124 +282,18 @@ class PILArNetH5Dataset(Dataset):
         h5_file = self.h5data[h5_idx]
         file_idx = self.indices[h5_idx][idx_in_file]
 
-        # load point cloud data
-        data = h5_file["point"][file_idx].reshape(-1, 8)[:, [0, 1, 2, 3]]  # (x,y,z,e)
-        
-        if self.revision == "v1":
-            # v1: cluster dataset is (-1, 5) without PID, no cluster_extra dataset
-            cluster_size, group_id, interaction_id, semantic_id = (
-                h5_file["cluster"][file_idx].reshape(-1, 5)[:, [0, 2, -2, -1]].T
-            )
-            # v1 doesn't have interaction_id or pid, set defaults
-            pid = np.full_like(semantic_id, -1)  # -1
-            # v1 doesn't have cluster_extra, set defaults for momentum and vertex
-            mom = np.zeros_like(semantic_id, dtype=np.float32)
-            vtx_x = np.zeros_like(semantic_id, dtype=np.float32)
-            vtx_y = np.zeros_like(semantic_id, dtype=np.float32)
-            vtx_z = np.zeros_like(semantic_id, dtype=np.float32)
-        elif self.revision == "v2":
-            cluster_size, group_id, interaction_id, semantic_id, pid = (
-                h5_file["cluster"][file_idx].reshape(-1, 6)[:, [0, 2, -3, -2, -1]].T
-            )
-            mom, vtx_x, vtx_y, vtx_z = h5_file["cluster_extra"][file_idx].reshape(-1, 5)[:, [1, 2, 3, 4]].T
-            pid[pid == -1] = (
-                5 if not self.old_pid_mapping else 6
-            )  # -1 (LED) --> 5 (where Kaon is) or 6 (new ID)
-        elif self.revision == "v3":
-            cluster_size, group_id, interaction_id, semantic_id, pid = (
-                h5_file["cluster"][file_idx].reshape(-1, 6)[:, [0, 2, -3, -2, -1]].T
-            )
-            n_clusters = cluster_size.shape[0]
-            raw_extra = h5_file["cluster_extra"][file_idx]
-            cluster_extra = (
-                raw_extra.reshape(n_clusters, -1)
-                if n_clusters > 0
-                else np.empty((0, 6), dtype=np.float32)
-            )
-            if cluster_extra.shape[1] != 6:
-                raise ValueError(
-                    f"Expected v3 cluster_extra width 6, got {cluster_extra.shape[1]}"
-                )
-            mom, vtx_x, vtx_y, vtx_z, is_primary = cluster_extra[:, [1, 2, 3, 4, 5]].T
-            pid[pid == -1] = (
-                5 if not self.old_pid_mapping else 6
-            )  # -1 (LED) --> 5 (where Kaon is) or 6 (new ID)
-        else:
-            raise ValueError(f"Unsupported PILArNet revision: {self.revision}")
-
-        # Remove low energy scatters if configured
-        if self.remove_low_energy_scatters:
-            data = data[cluster_size[0] :]
-            semantic_id, group_id, interaction_id, pid, cluster_size = (
-                semantic_id[1:],
-                group_id[1:],
-                interaction_id[1:],
-                pid[1:],
-                cluster_size[1:],
-            )
-            mom, vtx_x, vtx_y, vtx_z = mom[1:], vtx_x[1:], vtx_y[1:], vtx_z[1:]
-            if self.revision == "v3":
-                is_primary = is_primary[1:]
-
-        # Compute semantic ids for each point
-        data_semantic_id = np.repeat(semantic_id, cluster_size)
-        data_group_id = np.repeat(group_id, cluster_size)
-        data_interaction_id = np.repeat(interaction_id, cluster_size)
-        data_pid = np.repeat(pid, cluster_size)
-        data_mom = np.repeat(mom, cluster_size)
-        data_vtx_x = np.repeat(vtx_x, cluster_size)
-        data_vtx_y = np.repeat(vtx_y, cluster_size)
-        data_vtx_z = np.repeat(vtx_z, cluster_size)
-        if self.revision == "v3":
-            data_is_primary = np.repeat(is_primary, cluster_size)
-        
-        # Apply energy threshold if needed
-        if self.energy_threshold > 0:
-            threshold_mask = data[:, 3] > self.energy_threshold
-            data = data[threshold_mask]
-            data_semantic_id = data_semantic_id[threshold_mask]
-            data_group_id = data_group_id[threshold_mask]
-            data_interaction_id = data_interaction_id[threshold_mask]
-            data_pid = data_pid[threshold_mask]
-            data_mom = data_mom[threshold_mask]
-            data_vtx_x = data_vtx_x[threshold_mask]
-            data_vtx_y = data_vtx_y[threshold_mask]
-            data_vtx_z = data_vtx_z[threshold_mask]
-            if self.revision == "v3":
-                data_is_primary = data_is_primary[threshold_mask]
-
-        # Prepare return dictionary
-        data_dict = {}
-
-        # Get coordinates
-        data_dict["coord"] = data[:, :3].astype(np.float32)
-
-        # Process energy (raw)
-        energy = data[:, 3].astype(np.float32)
-        data_dict["energy"] = energy[:, None]
-
-        # Momentum and vertex labels (v2/v3 only)
-        data_dict["momentum"] = data_mom.astype(np.float32)[:, None]
-        data_dict["vertex"] = np.stack([data_vtx_x, data_vtx_y, data_vtx_z], axis=1).astype(np.float32)
-        if self.revision == "v3":
-            data_dict["is_primary"] = data_is_primary.astype(np.int32)[:, None]
-
-        # Get semantic labels
-        data_dict["segment_motif"] = data_semantic_id.astype(np.int32)[:, None]
-        data_dict["segment_pid"] = data_pid.astype(np.int32)[:, None]
-        # compute both particle- and interaction-level instances
-        particle_ids = data_group_id.astype(np.int32)
-        interaction_ids = data_interaction_id.astype(np.int32)
-
-        instance_particle = map_instance_ids(particle_ids)
-        instance_interaction = map_instance_ids(interaction_ids)
-
-        # always return both flavors
-        data_dict["instance_particle"] = instance_particle
-        data_dict["instance_interaction"] = instance_interaction
-        data_dict["segment_interaction"] = (interaction_ids[:, None] != -1).astype(
-                np.int32
-            )  # 1 if not background, 0 if background
+        # load raw arrays for this event and decode into a flat data_dict
+        data_dict = decode_event(
+            point=h5_file["point"][file_idx],
+            cluster=h5_file["cluster"][file_idx],
+            cluster_extra=(
+                h5_file["cluster_extra"][file_idx] if self.revision != "v1" else None
+            ),
+            revision=self.revision,
+            energy_threshold=self.energy_threshold,
+            remove_low_energy_scatters=self.remove_low_energy_scatters,
+            old_pid_mapping=self.old_pid_mapping,
+        )
 
         # add metadata
         h5_name = os.path.basename(self.h5_files[h5_idx])
@@ -432,195 +320,21 @@ class PILArNetH5Dataset(Dataset):
 
         return f"{h5_name}_{file_idx}"
 
-    def _sample_overlay_n_events(self):
-        """Sample the number of events to overlay."""
-        if isinstance(self.overlay_n_events, (tuple, list)):
-            return random.randint(self.overlay_n_events[0], self.overlay_n_events[1])
-        return self.overlay_n_events
-
-    @staticmethod
-    def _get_rotation_matrix_90(axis, n_rotations):
-        """Get rotation matrix for n * 90 degree rotation around axis."""
-        angle = n_rotations * np.pi / 2
-        c, s = np.cos(angle), np.sin(angle)
-        if axis == "x":
-            return np.array([[1, 0, 0], [0, c, -s], [0, s, c]], dtype=np.float32)
-        elif axis == "y":
-            return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], dtype=np.float32)
-        else:  # z
-            return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float32)
-
-    def _apply_random_90_rotation(self, coord, center=None, rotations=None):
-        """Apply random 90-degree rotations around x, y, z axes centered at given point."""
-        if center is None:
-            center = np.array([384.0, 384.0, 384.0], dtype=np.float32)
-        if rotations is None:
-            rotations = {axis: random.randint(0, 3) for axis in ("x", "y", "z")}
-        coord = coord - center
-        for axis in ["x", "y", "z"]:
-            n_rot = rotations[axis]
-            if n_rot > 0:
-                rot_mat = self._get_rotation_matrix_90(axis, n_rot)
-                coord = coord @ rot_mat.T
-        coord = coord + center
-        return coord
-
-    def _deduplicate_voxels(self, data_dict, concat_keys):
-        """
-        Deduplicate overlapping voxels based on segment_motif priority.
-        Priority: track (1) > shower (0) > michel (2) > delta (3) > led (4)
-        """
-        coord = data_dict.get("coord")
-        if coord is None:
-            return data_dict
-
-        coord_int = np.round(coord).astype(np.int64)
-        segment = data_dict.get("segment_motif")
-        
-        if segment is None:
-            _, unique_idx = np.unique(coord_int, axis=0, return_index=True)
-            unique_idx = np.sort(unique_idx)
-            for key in concat_keys:
-                if key in data_dict and data_dict[key] is not None:
-                    data_dict[key] = data_dict[key][unique_idx]
-            return data_dict
-
-        segment = segment.flatten()
-        n_points = coord_int.shape[0]
-        priorities = np.array([DEFAULT_LABEL_PRIORITY.get(int(s), 999) for s in segment], dtype=np.int32)
-
-        coord_min = coord_int.min(axis=0)
-        coord_shifted = coord_int - coord_min
-        coord_max = coord_shifted.max(axis=0) + 1
-
-        voxel_hash = (
-            coord_shifted[:, 0].astype(np.int64) * (coord_max[1] * coord_max[2]) +
-            coord_shifted[:, 1].astype(np.int64) * coord_max[2] +
-            coord_shifted[:, 2].astype(np.int64)
-        )
-
-        unique_hashes, inverse_indices = np.unique(voxel_hash, return_inverse=True)
-        n_unique = len(unique_hashes)
-
-        best_idx = np.full(n_unique, -1, dtype=np.int64)
-        best_priority = np.full(n_unique, 1000, dtype=np.int32)
-
-        for i in range(n_points):
-            voxel_idx = inverse_indices[i]
-            if priorities[i] < best_priority[voxel_idx]:
-                best_priority[voxel_idx] = priorities[i]
-                best_idx[voxel_idx] = i
-
-        keep_idx = best_idx[best_idx >= 0]
-        keep_idx = np.sort(keep_idx)
-
-        for key in concat_keys:
-            if key in data_dict and data_dict[key] is not None:
-                data_dict[key] = data_dict[key][keep_idx]
-
-        return data_dict
-
-    def _apply_overlay(self, data_dict):
-        """Overlay multiple events into a single point cloud."""
-        n_events = self._sample_overlay_n_events()
-        if n_events <= 1:
-            return data_dict
-
-        concat_keys = [
-            "coord", "energy", "segment_motif", "segment_pid",
-            "instance_particle", "instance_interaction",
-            "momentum", "vertex", "segment_interaction",
-        ]
-        if self.revision == "v3":
-            concat_keys.append("is_primary")
-        instance_keys = ("instance_particle", "instance_interaction")
-
-        dataset_len = len(self)
-        if self.overlay_allow_repeats:
-            indices = [random.randint(0, dataset_len - 1) for _ in range(n_events - 1)]
-        else:
-            indices = random.sample(range(dataset_len), min(n_events - 1, dataset_len))
-
-        additional_dicts = []
-        for idx in indices:
-            try:
-                extra = self.get_data(idx)
-                additional_dicts.append(extra)
-            except Exception:
-                continue
-
-        if not additional_dicts:
-            return data_dict
-
-        # track max instance ID for offsetting
-        max_instance = {}
-        for key in instance_keys:
-            if key in data_dict and data_dict[key] is not None:
-                vals = data_dict[key]
-                max_instance[key] = int(vals[vals != -1].max()) + 1 if (vals != -1).any() else 0
-            else:
-                max_instance[key] = 0
-
-
-        for extra in additional_dicts:
-            # offset instance IDs
-            for key in instance_keys:
-                if key in extra and extra[key] is not None:
-                    inst = extra[key]
-                    mask = inst != -1
-                    inst[mask] += max_instance[key]
-                    if mask.any():
-                        max_instance[key] = int(inst[mask].max()) + 1
-
-            # apply random 90-degree rotation around detector center
-            if "coord" in extra:
-                # rotation center is the detector volume center
-                detector_center = np.array([384.0, 384.0, 384.0], dtype=np.float32)
-                rotations = {axis: random.randint(0, 3) for axis in ("x", "y", "z")}
-                extra["coord"] = self._apply_random_90_rotation(
-                    extra["coord"], center=detector_center, rotations=rotations
-                )
-                if self.revision in ("v2", "v3") and "vertex" in extra:
-                    valid_vertex = ~(extra["vertex"] == -1).all(axis=1)
-                    extra["vertex"][valid_vertex] = self._apply_random_90_rotation(
-                        extra["vertex"][valid_vertex],
-                        center=detector_center,
-                        rotations=rotations,
-                    )
-
-            # concatenate arrays
-            for key in concat_keys:
-                if key in data_dict and key in extra:
-                    if data_dict[key] is not None and extra[key] is not None:
-                        data_dict[key] = np.concatenate([data_dict[key], extra[key]], axis=0)
-
-        # deduplicate overlapping voxels
-        data_dict = self._deduplicate_voxels(data_dict, concat_keys)
-
-        if "name" in data_dict:
-            data_dict["name"] = f"{data_dict['name']}_overlay{n_events}"
-
-        return data_dict
+    def _num_source_events(self):
+        """Count of distinct events (pre-``loop``); overlay samples from this."""
+        return int(self.cumulative_lengths[-1])
 
     def prepare_train_data(self, idx):
         """Prepare training data with transforms."""
         data_dict = self.get_data(idx % len(self))
-        # apply event overlay if enabled
-        if self.overlay_n_events > 1 or (isinstance(self.overlay_n_events, (tuple, list)) and self.overlay_n_events[1] > 1):
-            if random.random() < self.overlay_prob:
-                data_dict = self._apply_overlay(data_dict)
+        data_dict = self._maybe_overlay(data_dict)
         return self.transform(data_dict)
 
     def prepare_test_data(self, idx):
         """Prepare test data with test transforms."""
         # Load data
         data_dict = self.get_data(idx % len(self))
-
-        # apply event overlay if enabled
-        if self.overlay_n_events > 1 or (isinstance(self.overlay_n_events, (tuple, list)) and self.overlay_n_events[1] > 1):
-            if random.random() < self.overlay_prob:
-                data_dict = self._apply_overlay(data_dict)
-
+        data_dict = self._maybe_overlay(data_dict)
 
         # Apply transforms
         if self.transform is not None:
@@ -655,19 +369,3 @@ class PILArNetH5Dataset(Dataset):
         if hasattr(self, "initted") and self.initted:
             for h5_file in self.h5data:
                 h5_file.close()
-
-def map_instance_ids(instance_ids_array):
-    """Map instance ids to new ids.
-
-    i.e. instead of having instance ids like [0, 1, 23, 47, 52, 53, 54, 55, 56, 57],
-            we want to have instance ids like [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    """
-    unique_ids_local = np.unique(instance_ids_array)
-    id_mapping_local = {
-        old_id: new_id
-        for new_id, old_id in enumerate(unique_ids_local[unique_ids_local >= 0])
-    }
-    return np.array(
-        [id_mapping_local.get(id_val, -1) for id_val in instance_ids_array],
-        dtype=np.int32,
-    )[:, None]

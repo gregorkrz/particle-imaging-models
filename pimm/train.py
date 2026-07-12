@@ -12,7 +12,16 @@ Modified from the original Pointcept ``tools/train.py``.
 import sys
 import os
 import logging
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Drop the script dir (the `pimm/` package dir) from sys.path so pimm submodules
+# don't shadow installed distributions (e.g. `datasets` -> HuggingFace, not
+# `pimm.datasets`); make the repo root importable instead.
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_repo_root = os.path.dirname(_script_dir)
+sys.path[:] = [p for p in sys.path if os.path.abspath(p) != _script_dir]
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
 from pimm.engines.defaults import (
     default_argument_parser,
     default_config_parser,

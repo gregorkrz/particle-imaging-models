@@ -30,6 +30,8 @@ train = [
     "safetensors; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "timm; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "regex; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "pyarrow; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "datasets; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torch==2.13.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torchvision==0.28.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "torchdata; sys_platform == 'linux' and platform_machine == 'x86_64'",
