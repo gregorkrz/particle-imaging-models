@@ -215,42 +215,67 @@ jobs:
   build-nersc:
     needs: lock
     if: needs.lock.outputs.build == 'true'
-    uses: docker/github-builder/.github/workflows/build.yml@v1
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      id-token: write
-    with:
-      output: image
-      file: .github/docker/Dockerfile.nersc
-      push: ${{ github.repository == 'DeepLearnPhysics/particle-imaging-models' && github.event_name != 'pull_request' }}
-      cache: true
-      cache-mode: max
-      cache-scope: nersc
-      meta-images: |
-        youngsm/pimm-nersc
-        ghcr.io/deeplearnphysics/pimm-nersc
-      meta-tags: |
-        type=ref,event=branch
-        type=ref,event=pr
-        type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
-        type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
-        type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
-        type=raw,value=pytorch2.13.0-cuda12.6
-      build-args: |
-        TORCH_VERSION=2.13.0
-        CUDA_VERSION=12.6
-        CUDNN_VERSION=9
-        TORCH_CUDA_ARCH_LIST=8.0 8.6 8.9 9.0
-    secrets:
-      github-token: ${{ secrets.GITHUB_TOKEN }}
-      registry-auths: |
-        - registry: ghcr.io
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            youngsm/pimm-nersc
+            ghcr.io/deeplearnphysics/pimm-nersc
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=pytorch2.13.0-cuda12.6
+
+      - name: Log in to GHCR
+        if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-        - registry: docker.io
+
+      - name: Log in to Docker Hub
+        if: github.repository == 'DeepLearnPhysics/particle-imaging-models'
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and publish NERSC image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .github/docker/Dockerfile.nersc
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            TORCH_VERSION=2.13.0
+            CUDA_VERSION=12.6
+            CUDNN_VERSION=9
+            TORCH_CUDA_ARCH_LIST=8.0 8.6 8.9 9.0
+          cache-from: type=gha,scope=nersc
+          cache-to: type=gha,scope=nersc,mode=max
+          provenance: false
+          sbom: false
+          outputs: type=image,push=${{ github.repository == 'DeepLearnPhysics/particle-imaging-models' }},oci-mediatypes=false
+
 
   test-nersc:
     needs: build-nersc
