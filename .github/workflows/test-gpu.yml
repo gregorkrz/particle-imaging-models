@@ -4,6 +4,16 @@ on:
   push:
     branches:
       - '**'
+    # only spend GPU time when something that can change the suite's result
+    # changed.
+    paths:
+      - 'pimm/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.python-version'
+      - '.github/scripts/modal_ci.py'
+      - '.github/workflows/test-gpu.yml'
   workflow_dispatch:
     inputs:
       ref:
