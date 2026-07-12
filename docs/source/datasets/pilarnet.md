@@ -9,10 +9,10 @@ per-sample `.npy` assets is required.
 ## Download
 
 The 168 GB dataset is hosted on Hugging Face. The downloader is
-`scripts/download_pilarnet.py`:
+`scripts/pilarnet/download.py`:
 
 ```bash
-python scripts/download_pilarnet.py --version v2 --output-dir /path/to/dir
+python scripts/pilarnet/download.py --version v2 --output-dir /path/to/dir
 ```
 
 ```{list-table}

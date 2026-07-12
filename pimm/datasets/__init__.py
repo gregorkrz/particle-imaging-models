@@ -15,7 +15,11 @@ from .stateful import (
 )
 
 # Detector and physics datasets.
-from .pilarnet import PILArNetH5Dataset
+from .pilarnet import (
+    PILArNetH5Dataset,
+    PILArNetParquetDataset,
+    PILArNetParquetIterableDataset,
+)
 from .jaxtpc_dataset import JAXTPCDataset
 from .lucid_dataset import LUCiDDataset
 from . import transform  # register transform classes
