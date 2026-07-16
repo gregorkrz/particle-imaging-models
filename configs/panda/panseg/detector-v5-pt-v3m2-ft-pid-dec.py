@@ -22,17 +22,37 @@ wandb_project = "InsSeg-PID-Sonata-PILArNet-M"  # Change to your desired project
 epoch = 20
 eval_epoch = 20
 
-# model settings
+# detector-v5 model settings
 model = dict(
-    type="detector-v1m2",
-    num_classes=6,  # photon, electron, muon, pion, proton, led
-    query_type="learned",
-    use_stuff_head=True,
-    stuff_classes=[5],
-    train_filter_use_gt=True,
+    type="detector-v5",
+    label_configs=dict(
+        particle=dict(
+            num_queries=32,
+            num_classes=6,  # photon, electron, muon, pion, proton, led
+            instance_key="instance_particle",
+            segment_key="segment_pid",
+            stuff_classes=[5],
+            use_stuff_head=True,
+            loss_weight=1.0,
+            overlap=False,
+            query_heads=[],
+            criterion=dict(
+                type="FastUnifiedInstanceLoss",
+                cost_mask=1.0,
+                cost_dice=1.0,
+                cost_class=1.0,
+                loss_weight_focal=2.0,
+                loss_weight_dice=5.0,
+                cls_weight_matched=2.0,
+                cls_weight_noobj=0.5,
+                focal_alpha=0.25,
+                focal_gamma=2.0,
+                aux_loss_weight=1.0,
+                num_points=100_000,
+            ),
+        ),
+    ),
     supervise_attn_mask=True,
-    predict_iou=False,
-    num_queries=32,
     backbone=dict(
         type="PT-v3m2",
         in_channels=4,  # [xyz, energy]
@@ -81,44 +101,28 @@ model = dict(
     upcast_attention=False,
     upcast_softmax=False,
     pos_emb=True,
-    attn_mask_anneal=False,
-    attn_mask_anneal_steps=10000,
-    attn_mask_warmup_steps=0,
-    attn_mask_progressive=False,
-    attn_mask_progressive_delay=0,
-    criteria=[
-        dict(
-            type="InstanceSegmentationLoss",
-            cost_mask=1.0,
-            cost_dice=1.0,
-            cost_class=1.0,
-            loss_weight_focal=2.0,
-            loss_weight_dice=5.0,
-            cls_weight_matched=2.0,
-            cls_weight_noobj=0.5,
-            momentum_loss_weight=1.0,
-            iou_loss_weight=1.0,
-            focal_alpha=0.25,
-            focal_gamma=2.0,
-            aux_loss_weight=1.0,
-            num_points=100_000,
-            truth_label="instance",
-        ),
-    ],
+    postprocess=dict(
+        stuff_threshold=0.5,
+        mask_threshold=0.5,
+        conf_threshold=0.5,
+        nms_kernel="gaussian",
+        nms_sigma=2.0,
+        nms_pre=-1,
+        nms_max=-1,
+        min_points=2,
+        fill_uncovered=False,
+    ),
 )
 
 lr_decay = 0.97
 base_lr = 2e-4
 base_wd = 0.01
-backbone_mult = 0.05
 
-# encoder/decoder depths
-enc_depth = model.get('enc_depth', 0) if 'enc_depth' in model else 0
-dec_depth = model['depth']
+# frozen encoder: schedule the decoder only
+dec_depth = model["depth"]
 
 param_dicts = []
 
-# don't do this for decoders
 # decoder: highest LR at last decoder block
 for b in range(dec_depth):
     exp = dec_depth - b - 1
@@ -144,30 +148,26 @@ grid_size = 0.001  # ~ 0.001/(1 / (768.0 * 3**0.5 / 2))
 transform = [
     dict(type="NormalizeCoord", center=[384.0, 384.0, 384.0], scale=768.0 * 3**0.5 / 2),
     dict(type="LogTransform", min_val=1.0e-2, max_val=20.0, keys=("energy",)),
-    dict(type="MomentumTransform", keys=("momentum",)), # p --> logP
     dict(type="GridSample", grid_size=grid_size, hash_type="fnv", mode="train", return_grid_coord=True),
     dict(type="RandomRotate", angle=[-1, 1], axis="z", center=[0, 0, 0], p=0.8),
     dict(type="RandomRotate", angle=[-1, 1], axis="x", center=[0, 0, 0], p=0.8),
     dict(type="RandomRotate", angle=[-1, 1], axis="y", center=[0, 0, 0], p=0.8),
     dict(type="RandomFlip", p=0.5),
-    dict(type="Copy", keys_dict={"instance_particle": "instance", "segment_pid": "segment"}),
     dict(type="ToTensor"),
     dict(
         type="Collect",
-        keys=("coord", "grid_coord", "segment", "instance", "momentum"),
+        keys=("coord", "grid_coord", "segment_pid", "instance_particle"),
         feat_keys=("coord", "energy"),
     ),
 ]
 test_transform = [
     dict(type="NormalizeCoord", center=[384.0, 384.0, 384.0], scale=768.0 * 3**0.5 / 2),
     dict(type="LogTransform", min_val=1.0e-2, max_val=20.0, keys=("energy",)),
-    dict(type="MomentumTransform", keys=("momentum",)), # p --> logP
     dict(type="GridSample", grid_size=grid_size, hash_type="fnv", mode="train", return_grid_coord=True),
-    dict(type="Copy", keys_dict={"instance_particle": "instance", "segment_pid": "segment"}),
     dict(type="ToTensor"),
     dict(
         type="Collect",
-        keys=("coord", "grid_coord", "segment", "instance", "momentum"),
+        keys=("coord", "grid_coord", "segment_pid", "instance_particle"),
         feat_keys=("coord", "energy"),
     ),
 ]
@@ -234,8 +234,12 @@ hooks = [
     ),
     dict(
         type="CheckpointLoader",
-        keywords="module.student.backbone",
-        replacement="module.backbone",
+        replacements={
+            "module.student.backbone": "module.backbone",
+            # Portable Panda-Base exports use bare backbone keys.
+            "embedding": "backbone.embedding",
+            "enc": "backbone.enc",
+        },
     ),
     dict(
         type="ParameterCounter",
@@ -253,8 +257,9 @@ hooks = [
         mask_threshold=0.5,
         stuff_classes=[5],
         iou_thresh=0.5,
-        class_names=data["names"][:-1],  # exclude led class
+        class_names=data["names"][:-1],  # exclude led (stuff) class
         require_class_for_match=False,
+        labels=("particle",),
     ),
     dict(type="CheckpointSaver", save_freq=None, evaluator_every_n_steps=1000),
     dict(
@@ -269,7 +274,8 @@ hooks = [
 
 test = dict(
     type="InstanceSegTester",
-    class_names=data["names"][:-1],  # exclude led class
+    class_names=data["names"][:-1],  # exclude led (stuff) class
     stuff_classes=[5],
     require_class_for_match=False,
+    labels=("particle",),
 )

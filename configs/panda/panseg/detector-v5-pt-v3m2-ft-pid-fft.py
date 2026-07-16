@@ -16,22 +16,43 @@ find_unused_parameters = False
 
 # Weights & Biases specific settings
 use_wandb = True  # Enable Weights & Biases logging
-wandb_project = "InsSeg-PID-Sonata-PILArNet-M"  # Change to your desired project name
+wandb_project = "PanSeg-PID-Sonata-PILArNet-M"  # Change to your desired project name
 
 # scheduler settings
 epoch = 20
 eval_epoch = 20
 
-# model settings
+# detector-v5 model settings
 model = dict(
-    type="detector-v1m1",
-    num_classes=6,  # photon, electron, muon, pion, proton, led
-    query_type="learned",
-    use_stuff_head=True,
-    stuff_classes=[5],
-    train_filter_use_gt=False,
+    type="detector-v5",
+    label_configs=dict(
+        particle=dict(
+            num_queries=32,
+            num_classes=6,  # photon, electron, muon, pion, proton, led
+            instance_key="instance_particle",
+            segment_key="segment_pid",
+            stuff_classes=[5],
+            use_stuff_head=True,
+            loss_weight=1.0,
+            overlap=False,
+            query_heads=[],
+            criterion=dict(
+                type="FastUnifiedInstanceLoss",
+                cost_mask=1.0,
+                cost_dice=1.0,
+                cost_class=1.0,
+                loss_weight_focal=2.0,
+                loss_weight_dice=5.0,
+                cls_weight_matched=2.0,
+                cls_weight_noobj=0.5,
+                focal_alpha=0.25,
+                focal_gamma=2.0,
+                aux_loss_weight=1.0,
+                num_points=100_000,
+            ),
+        ),
+    ),
     supervise_attn_mask=True,
-    num_queries=32,
     backbone=dict(
         type="PT-v3m2",
         in_channels=4,  # [xyz, energy]
@@ -60,8 +81,8 @@ model = dict(
         upcast_softmax=False,
         traceable=False,
         mask_token=False,
-        enc_mode=True,  # encoder only
-        freeze_encoder=True,
+        enc_mode=True,  # encoder + decoder
+        freeze_encoder=False,
     ),
     full_in_channels=1232,
     mlp_point_proj=True,
@@ -80,43 +101,41 @@ model = dict(
     upcast_attention=False,
     upcast_softmax=False,
     pos_emb=True,
-    attn_mask_anneal=False,
-    attn_mask_anneal_steps=10000,
-    attn_mask_warmup_steps=0,
-    attn_mask_progressive=False,
-    attn_mask_progressive_delay=0,
-    criteria=[
-        dict(
-            type="InstanceSegmentationLoss",
-            cost_mask=1.0,
-            cost_dice=1.0,
-            cost_class=1.0,
-            loss_weight_focal=2.0,
-            loss_weight_dice=5.0,
-            cls_weight_matched=2.0,
-            cls_weight_noobj=0.5,
-            momentum_loss_weight=1.0,
-            focal_alpha=0.25,
-            focal_gamma=2.0,
-            aux_loss_weight=1.0,
-            num_points=100_000,
-            truth_label="instance",
-        ),
-    ],
+    postprocess=dict(
+        stuff_threshold=0.5,
+        mask_threshold=0.5,
+        conf_threshold=0.5,
+        nms_kernel="gaussian",
+        nms_sigma=2.0,
+        nms_pre=-1,
+        nms_max=-1,
+        min_points=2,
+        fill_uncovered=False,
+    ),
 )
 
 lr_decay = 0.97
 base_lr = 2e-4
 base_wd = 0.01
-backbone_mult = 0.05
+backbone_mult = 1.0
 
 # encoder/decoder depths
-enc_depth = model.get('enc_depth', 0) if 'enc_depth' in model else 0
-dec_depth = model['depth']
+enc_depths = model["backbone"]["enc_depths"]
+dec_depth = model["depth"]
 
 param_dicts = []
 
-# don't do this for decoders
+# encoder: smallest LR at first encoder block
+for e in range(len(enc_depths)):
+    for b in range(enc_depths[e]):
+        exp = (sum(enc_depths) - sum(enc_depths[:e]) - b - 1) + dec_depth
+        param_dicts.append(
+            dict(
+                keyword=f"enc{e}.block{b}.",
+                lr=base_lr * (lr_decay**exp) * backbone_mult,
+            )
+        )
+
 # decoder: highest LR at last decoder block
 for b in range(dec_depth):
     exp = dec_depth - b - 1
@@ -147,11 +166,10 @@ transform = [
     dict(type="RandomRotate", angle=[-1, 1], axis="x", center=[0, 0, 0], p=0.8),
     dict(type="RandomRotate", angle=[-1, 1], axis="y", center=[0, 0, 0], p=0.8),
     dict(type="RandomFlip", p=0.5),
-    dict(type="Copy", keys_dict={"instance_particle": "instance", "segment_pid": "segment"}),
     dict(type="ToTensor"),
     dict(
         type="Collect",
-        keys=("coord", "grid_coord", "segment", "instance"),
+        keys=("coord", "grid_coord", "segment_pid", "instance_particle"),
         feat_keys=("coord", "energy"),
     ),
 ]
@@ -159,11 +177,10 @@ test_transform = [
     dict(type="NormalizeCoord", center=[384.0, 384.0, 384.0], scale=768.0 * 3**0.5 / 2),
     dict(type="LogTransform", min_val=1.0e-2, max_val=20.0, keys=("energy",)),
     dict(type="GridSample", grid_size=grid_size, hash_type="fnv", mode="train", return_grid_coord=True),
-    dict(type="Copy", keys_dict={"instance_particle": "instance", "segment_pid": "segment"}),
     dict(type="ToTensor"),
     dict(
         type="Collect",
-        keys=("coord", "grid_coord", "segment", "instance"),
+        keys=("coord", "grid_coord", "segment_pid", "instance_particle"),
         feat_keys=("coord", "energy"),
     ),
 ]
@@ -218,7 +235,7 @@ hooks = [
     dict(
         type="WandbNamer",
         keys=("model.type", "data.train.max_len", "amp_dtype", "seed"),
-        extra="dec",
+        extra="fft",
     ),
     dict(
         type="WeightDecayExclusion",
@@ -230,8 +247,12 @@ hooks = [
     ),
     dict(
         type="CheckpointLoader",
-        keywords="module.student.backbone",
-        replacement="module.backbone",
+        replacements={
+            "module.student.backbone": "module.backbone",
+            # Portable Panda-Base exports use bare backbone keys.
+            "embedding": "backbone.embedding",
+            "enc": "backbone.enc",
+        },
     ),
     dict(
         type="ParameterCounter",
@@ -249,8 +270,9 @@ hooks = [
         mask_threshold=0.5,
         stuff_classes=[5],
         iou_thresh=0.5,
-        class_names=data["names"][:-1],  # exclude led class
+        class_names=data["names"][:-1],  # exclude led (stuff) class
         require_class_for_match=False,
+        labels=("particle",),
     ),
     dict(type="CheckpointSaver", save_freq=None, evaluator_every_n_steps=1000),
     dict(
@@ -262,10 +284,11 @@ hooks = [
     dict(type="FinalEvaluator", test_last=True),
 ]
 
+
 test = dict(
     type="InstanceSegTester",
-    class_names=data["names"][:-1],  # exclude led class
+    class_names=data["names"][:-1],  # exclude led (stuff) class
     stuff_classes=[5],
     require_class_for_match=False,
+    labels=("particle",),
 )
-
