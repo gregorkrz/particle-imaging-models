@@ -47,28 +47,16 @@ model = dict(
                 # LED clusters carry no true momentum (sentinel -1); drop them
                 # from the regression loss.
                 dict(name="momentum", use_class_logits=True, sentinel=-1.0),
-                # Signed momentum components (GeV). Regressed in linear space --
-                # NOT passed through MomentumTransform (which is log10 and would
-                # discard the sign). Each maps to the matching dataloader key.
-                # Same LED sentinel (-1) applies; empirically LED is the only
-                # class with undefined px/py/pz.
+                # Signed momentum vector (px, py, pz) in GeV, regressed in linear
+                # space -- NOT passed through MomentumTransform (log10, would
+                # discard the sign). Kept as a single dim=3 target so it rotates
+                # correctly under the geometric augmentations (a rotation mixes
+                # the components). Maps to the `momentum_vec` dataloader key.
+                # The all-(-1) LED sentinel is dropped from the loss; empirically
+                # LED is the only class with undefined momentum.
                 dict(
-                    name="px",
-                    dim=1,
-                    use_class_logits=True,
-                    loss_weight=momentum_component_loss_weight,
-                    sentinel=-1.0,
-                ),
-                dict(
-                    name="py",
-                    dim=1,
-                    use_class_logits=True,
-                    loss_weight=momentum_component_loss_weight,
-                    sentinel=-1.0,
-                ),
-                dict(
-                    name="pz",
-                    dim=1,
+                    name="momentum_vec",
+                    dim=3,
                     use_class_logits=True,
                     loss_weight=momentum_component_loss_weight,
                     sentinel=-1.0,
@@ -230,22 +218,27 @@ target_keys = (
     "segment_interaction",
     "instance_interaction",
     "momentum",
-    # Signed momentum components from the _pxpypz dataset (decode.py emits
-    # per-point px/py/pz, sentinel-filled where truth momentum is absent).
-    "px",
-    "py",
-    "pz",
+    # Signed momentum vector (N, 3) from the _pxpypz dataset (decode.py packs
+    # px/py/pz, sentinel-filled where truth momentum is absent). Declared in
+    # aux_vector_keys below so the geometric augmentations rotate/flip it.
+    "momentum_vec",
     "vertex",
     "is_primary",
 )
 transform = [
+    # Declare momentum_vec as a magnitude-bearing vector target so RandomRotate/
+    # RandomFlip rotate it with the point cloud (linear part only, no centering,
+    # no renormalization). NormalizeCoord does NOT touch aux_vector_keys, so the
+    # momentum vector is correctly left un-scaled/un-translated.
+    dict(type="Update", keys_dict={"aux_vector_keys": ["momentum_vec"]}),
     dict(
         type="NormalizeCoord",
         center=[384.0, 384.0, 384.0],
         scale=768.0 * 3**0.5 / 2,
     ),
     dict(type="LogTransform", min_val=1.0e-2, max_val=20.0, keys=("energy",)),
-    # Only the magnitude head is log-compressed; px/py/pz stay linear/signed.
+    # Only the magnitude head is log-compressed; the momentum vector stays
+    # linear/signed.
     dict(type="MomentumTransform", keys=("momentum",)),
     dict(
         type="GridSample",

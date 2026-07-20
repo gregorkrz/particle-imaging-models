@@ -83,6 +83,32 @@ def _apply_to_aux_directions(data_dict, transform):
             data_dict[key] = (v / np.clip(nrm, 1e-9, None)).astype(np.float32, copy=False)
 
 
+def _apply_to_aux_vectors(data_dict, transform):
+    """Apply a LINEAR transform to opt-in VECTOR keys, preserving magnitude.
+
+    Keys listed in ``data_dict['aux_vector_keys']`` are (N, 3) vectors whose
+    *magnitude carries meaning* (e.g. momentum components in GeV), unlike the
+    unit ``aux_direction_keys``. Only rotation/flip are applied (NOT translation
+    or scale) and the result is NOT re-normalized. Rows equal to the all-(-1)
+    "undefined" sentinel are left untouched so downstream sentinel masking still
+    fires. Callers must pass the linear part only (no centering).
+    """
+    for key in data_dict.get("aux_vector_keys", ()) or ():
+        v = data_dict.get(key)
+        if v is None:
+            continue
+        v = np.asarray(v)
+        if v.ndim != 2 or v.shape[1] != 3:
+            data_dict[key] = transform(v)
+            continue
+        # Preserve the missing-value sentinel (all components == -1).
+        keep = ~(v == -1).all(axis=1)
+        if keep.any():
+            out = v.copy()
+            out[keep] = transform(v[keep])
+            data_dict[key] = out.astype(np.float32, copy=False)
+
+
 def _translate_axis(points, dim, value):
     """Return a copy of points translated along one axis."""
     points = points.copy()
@@ -116,6 +142,7 @@ def index_operator(data_dict, index, duplicate=False):
             "instance_particle",
             "instance_interaction",
             "momentum",
+            "momentum_vec",
             "vertex",
             # JAXTPCDataset keys (JAXTPC)
             "track_ids",
@@ -171,6 +198,7 @@ __all__ = [
     "_apply_to_v3_vertex",
     "_apply_to_aux_positions",
     "_apply_to_aux_directions",
+    "_apply_to_aux_vectors",
     "_translate_axis",
     "compute_anchors",
     "ANCHOR_DEFAULT_CFG",

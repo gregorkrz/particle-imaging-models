@@ -272,6 +272,13 @@ def decode_event(
     data_dict["px"] = data_px.astype(np.float32)[:, None]
     data_dict["py"] = data_py.astype(np.float32)[:, None]
     data_dict["pz"] = data_pz.astype(np.float32)[:, None]
+    # Packed (N, 3) momentum vector for regression. Unlike the separate px/py/pz
+    # scalars, this rides the geometric augmentations as a single vector (a
+    # rotation mixes the components, so they must travel together). The all-(-1)
+    # sentinel for undefined momentum (e.g. LED) is preserved by the transforms.
+    data_dict["momentum_vec"] = np.stack(
+        [data_px, data_py, data_pz], axis=1
+    ).astype(np.float32)
     data_dict["true_energy"] = data_true_energy.astype(np.float32)[:, None]
     data_dict["vertex"] = np.stack(
         [data_vtx_x, data_vtx_y, data_vtx_z], axis=1
