@@ -22,6 +22,12 @@ wandb_project = "PanSeg-Joint-Sonata-PILArNet-M"
 epoch = 20
 eval_epoch = 20
 
+# Warm-start (full fine-tune) from the published Panda Particle detector.
+# Pinned to the same commit the sibling ft-pid-fft-detector config uses. The
+# CheckpointLoader hook below loads this into the full UnifiedDetector; the new
+# momentum_vec head has no counterpart in the checkpoint and stays at init.
+weight = "hf://DeepLearnPhysics/panda-particle@bd90792dfe83cd05b437b719564b311f0a0b785a"
+
 # Per-component momentum regression loss weight. px/py/pz are signed GeV values
 # regressed in linear space (no MomentumTransform), so they share the default
 # SmoothL1RegressionLoss but with a modest weight to balance against the mask
@@ -343,12 +349,13 @@ hooks = [
     ),
     dict(
         type="CheckpointLoader",
-        replacements={
-            "module.student.backbone": "module.backbone",
-            # Portable Panda-Base exports use bare backbone keys.
-            "embedding": "backbone.embedding",
-            "enc": "backbone.enc",
-        },
+        # Warm-start from the published Panda Particle detector (see `weight`
+        # above). It is a full UnifiedDetector export, so its keys already match
+        # this model -- no renaming needed. strict=False so the new momentum_vec
+        # head (absent from the checkpoint) is left at its init instead of
+        # raising on missing keys.
+        replacements={},
+        strict=False,
     ),
     dict(
         type="ParameterCounter",
