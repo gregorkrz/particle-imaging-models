@@ -289,6 +289,13 @@ class PILArNetH5Dataset(PILArNetOverlayMixin, Dataset):
             cluster_extra=(
                 h5_file["cluster_extra"][file_idx] if self.revision != "v1" else None
             ),
+            # SPLIT-layout pxpypz files carry px/py/pz in a separate dataset;
+            # absent on older/packed files and on parquet (then px/py/pz are -1).
+            cluster_extra_2=(
+                h5_file["cluster_extra_2"][file_idx]
+                if self.revision != "v1" and "cluster_extra_2" in h5_file
+                else None
+            ),
             revision=self.revision,
             energy_threshold=self.energy_threshold,
             remove_low_energy_scatters=self.remove_low_energy_scatters,

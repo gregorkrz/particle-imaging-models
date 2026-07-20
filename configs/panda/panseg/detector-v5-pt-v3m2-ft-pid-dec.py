@@ -167,7 +167,7 @@ test_transform = [
     dict(type="ToTensor"),
     dict(
         type="Collect",
-        keys=("coord", "grid_coord", "segment_pid", "instance_particle"),
+        keys=("coord", "grid_coord", "segment_pid", "instance_particle", "name"),
         feat_keys=("coord", "energy"),
     ),
 ]
@@ -210,7 +210,7 @@ data = dict(
         test_mode=False,
         energy_threshold=0.13,
         min_points=1024,
-        max_len=1000,
+        max_len=-1,
         remove_low_energy_scatters=False,
     ),
 )

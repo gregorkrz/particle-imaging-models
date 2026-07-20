@@ -51,8 +51,12 @@ container:
 # setup:
 #   - module load cuda
 
+train:
+  python: .venv/bin/python
+
 env:  # put secrets in .env, not here!
   NCCL_SOCKET_IFNAME: "^docker0,lo"
+  PIMM_HF_CACHE: /sdf/data/neutrino/gregork/hf_cache
   # EXTRA_VARIABLE: "value"
 
 # Optional rendezvous values override the automatically generated defaults.

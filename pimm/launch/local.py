@@ -156,15 +156,18 @@ def interpreter_args(cfg: dict[str, Any]) -> list[str]:
 
 
 def build_train_sh_command(cfg: dict[str, Any], run_name: str) -> str:
-    """Build the `scripts/train.sh` invocation for this resolved launch config."""
+    """Build the `scripts/train.sh` or `scripts/test.sh` invocation."""
     train_cfg = cfg.get("train", {})
     config = train_cfg.get("config")
     if not config:
         raise SystemExit("Need --train.config")
 
+    is_test = as_bool(train_cfg.get("test", False))
+    script = "test.sh" if is_test else "train.sh"
+
     repo_root = container_repo_root(cfg)
     res = resources(cfg)
-    parts: list[Any] = ["sh", f"{repo_root}/scripts/train.sh", "-m", res["nnodes"]]
+    parts: list[Any] = ["sh", f"{repo_root}/scripts/{script}", "-m", res["nnodes"]]
     # `nproc_per_node: auto` -> omit -g so train.sh auto-detects all visible GPUs
     # (Pointcept behavior). Otherwise pass the explicit GPU count.
     if res["nproc_per_node"] != "auto":
@@ -173,15 +176,17 @@ def build_train_sh_command(cfg: dict[str, Any], run_name: str) -> str:
 
     parts += interpreter_args(cfg)
 
-    wandb_name = cfg.get("run", {}).get("wandb_name") or run_name
-    if wandb_name:
-        parts += ["-a", wandb_name]
     if train_cfg.get("weight"):
         parts += ["-w", train_cfg["weight"]]
-    if as_bool(train_cfg.get("resume", False)):
-        parts += ["-r", "true"]
-    if as_bool(train_cfg.get("no_code_copy", False)):
-        parts += ["-C"]
+
+    if not is_test:
+        wandb_name = cfg.get("run", {}).get("wandb_name") or run_name
+        if wandb_name:
+            parts += ["-a", wandb_name]
+        if as_bool(train_cfg.get("resume", False)):
+            parts += ["-r", "true"]
+        if as_bool(train_cfg.get("no_code_copy", False)):
+            parts += ["-C"]
 
     options = train_cfg.get("options") or {}
     if options:

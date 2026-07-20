@@ -8,6 +8,8 @@ Please cite our work if the code is helpful to you.
 import os
 import csv
 import json
+import re
+import h5py
 import numpy as np
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -139,6 +141,41 @@ class TesterBase:
         if rows:
             _write_csv(csv_path, rows)
         self.logger.info(f"Wrote eval artifacts: {output_dir}")
+
+    def write_predictions(self, events):
+        """Write per-event predictions to an HDF5 shard for this test process.
+
+        Each event is stored as its own HDF5 group (keyed by a sanitized event
+        ``name``) holding the per-point arrays the model produced -- ``coord``,
+        ``grid_coord``, ``pred_instance``, ``pred_pid``, ``confidence`` -- all
+        sharing the same first dimension (the full point cloud). One file per
+        rank keeps this DDP-safe: ``predictions/predictions_rank{rank}.h5``.
+        """
+        if not events:
+            return
+        output_dir = os.path.join(self.cfg.save_path, "predictions")
+        os.makedirs(output_dir, exist_ok=True)
+        rank = comm.get_rank()
+        path = os.path.join(output_dir, f"predictions_rank{rank}.h5")
+        used_keys = {}
+        with h5py.File(path, "w") as f:
+            for idx, event in enumerate(events):
+                name = event.get("name")
+                if name is None:
+                    name = f"event_{idx}"
+                group_key = re.sub(r"[^0-9A-Za-z._-]", "_", str(name))
+                # HDF5 group names must be unique; disambiguate collisions.
+                count = used_keys.get(group_key, 0)
+                used_keys[group_key] = count + 1
+                if count:
+                    group_key = f"{group_key}__{count}"
+                group = f.create_group(group_key)
+                group.attrs["name"] = str(name)
+                for key, value in event.items():
+                    if key == "name" or value is None:
+                        continue
+                    group.create_dataset(key, data=np.asarray(value), compression="gzip")
+        self.logger.info(f"Wrote {len(events)} event predictions: {path}")
 
     def build_model(self):
         model = build_model(self.cfg.model)
@@ -408,6 +445,7 @@ class InstanceSegTester(TesterBase):
         self.require_class_for_match = bool(require_class_for_match)
         self.class_names = tuple(class_names or [])
         self.stuff_classes = tuple(sorted(stuff_classes or ()))
+        self.save_predictions = bool(getattr(cfg, "save_predictions", False))
 
     def test(self):
         self.logger.info(
@@ -426,8 +464,9 @@ class InstanceSegTester(TesterBase):
         all_stats = []
         ari_scores = []
         momentum_stats = []
+        saved_events = []
 
-        for input_dict in self.test_loader:
+        for event_index, input_dict in enumerate(self.test_loader):
             assert (
                 len(input_dict["offset"]) == 1
             ), "InstanceSegTester requires bs=1"
@@ -500,6 +539,24 @@ class InstanceSegTester(TesterBase):
             pr_inst = pred_instance_labels.numpy().astype(np.int64)
             pr_pid = pred_pid_labels.numpy().astype(np.int64)
 
+            if self.save_predictions:
+                names = input_dict.get("name")
+                name = names[0] if names else f"event_{event_index}"
+                event = {
+                    "name": name,
+                    # Anchor: the coords the model saw, aligned to the
+                    # predictions below (GridSample reorders points, so this
+                    # cannot be positionally matched back to the raw h5 event).
+                    "coord": point.coord.detach().cpu().numpy(),
+                    "pred_instance": pr_inst,
+                    "pred_pid": pr_pid,
+                    "confidence": results["confidences"].detach().cpu().numpy(),
+                }
+                grid_coord = getattr(point, "grid_coord", None)
+                if grid_coord is not None:
+                    event["grid_coord"] = grid_coord.detach().cpu().numpy()
+                saved_events.append(event)
+
             stats = eval_instances(
                 gt_inst,
                 pr_inst,
@@ -538,6 +595,11 @@ class InstanceSegTester(TesterBase):
                 )
             else:
                 ari_scores.append(float("nan"))
+
+        if self.save_predictions:
+            # One shard per rank keeps this DDP-safe (no cross-rank gather of
+            # potentially large per-point arrays).
+            self.write_predictions(saved_events)
 
         if comm.get_world_size() > 1:
             gathered = comm.gather((all_stats, ari_scores, momentum_stats), dst=0)
