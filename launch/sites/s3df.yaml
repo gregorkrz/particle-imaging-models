@@ -6,10 +6,11 @@ site: s3df
 # behavior. Uncomment and customize only the settings this site needs.
 # interactive: true # `pimm submit` uses a blocking salloc instead of sbatch
 
-# Inherited from slurm.yaml; uncomment to override for this site.
-# paths:
-#   repo_root: .
-#   exp_root: "{repo_root}/exp"
+# Inherited from slurm.yaml; overridden here to keep experiment output off the
+# repo/home filesystem and on the neutrino data volume.
+paths:
+  repo_root: .
+  exp_root: /sdf/data/neutrino/gregork/pimm_exp
 
 resources:
   scheduler: slurm

@@ -47,6 +47,10 @@ class QueryHeadConfig:
     aggregation: str | None = None
     squeeze: bool | None = None
     criterion: dict[str, Any] | None = None
+    # Continuous-head target value marking "undefined truth" (e.g. LED momentum
+    # is stored as -1). When set, matched instances whose target equals this
+    # sentinel are dropped from the head's regression loss. None = no filtering.
+    sentinel: float | None = None
 
     def __post_init__(self) -> None:
         if self.pred_key is None:

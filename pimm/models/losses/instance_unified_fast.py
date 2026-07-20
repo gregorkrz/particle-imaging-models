@@ -191,6 +191,21 @@ class FastUnifiedSingleLayerLoss(FastSingleLayerInstanceLoss):
             pred = pred.squeeze(-1)
         return pred, target
 
+    @staticmethod
+    def _sentinel_valid_mask(target, sentinel):
+        """Boolean mask of matched instances whose target is *not* the sentinel.
+
+        Some regression targets are undefined for certain instances (e.g. LED
+        clusters carry no true momentum, stored as ``-1``). A per-instance target
+        is treated as invalid only when every component equals ``sentinel``, so a
+        genuine coordinate that happens to hit the sentinel in one dimension is
+        kept.
+        """
+        if target.dim() <= 1:
+            return target != sentinel
+        flat = target.reshape(target.shape[0], -1)
+        return ~(flat == sentinel).all(dim=1)
+
     def _mode_per_instance(self, values, inverse, num_instances):
         values = values.long().view(-1)
         out = values.new_zeros(num_instances)
@@ -259,6 +274,22 @@ class FastUnifiedSingleLayerLoss(FastSingleLayerInstanceLoss):
             pred_b = pred[pred_key][batch_idx].to(device)
             pred_matched = pred_b[idx_q.long()]
             target_matched = target_per_inst[idx_gt.long()]
+
+            # Drop matched instances whose regression target is the configured
+            # sentinel (undefined truth, e.g. LED momentum). Opt-in per head via
+            # ``sentinel`` so heads with legitimate negative targets (vertices)
+            # are unaffected. If nothing valid remains, contribute zero loss
+            # while keeping the graph connected to pred (so DDP is happy).
+            sentinel = head.get("sentinel")
+            if kind == "continuous" and sentinel is not None:
+                valid = self._sentinel_valid_mask(target_matched, float(sentinel))
+                if not bool(valid.all()):
+                    if not bool(valid.any()):
+                        losses[name] = weight * (pred_matched.float().sum() * 0.0)
+                        continue
+                    pred_matched = pred_matched[valid]
+                    target_matched = target_matched[valid]
+
             if kind == "continuous":
                 target_matched = target_matched.to(pred_matched.dtype)
                 pred_matched, target_matched = self._align_regression_shapes(

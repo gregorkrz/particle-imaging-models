@@ -573,15 +573,12 @@ class InstanceSegTester(TesterBase):
                 counts = offset2bincount(point.offset)
                 counts_list = counts.cpu().tolist()
 
-                criterion = model.criteria.criteria[0].criterion
-
                 mom_stats = self._eval_momentum(
                     stats["matches"],
                     pred_instance_momentum,
                     momentum_gt,
                     gt_instance,
                     counts_list,
-                    criterion,
                     num_classes=self.cfg.data.num_classes,
                     pred_instance_labels=pr_inst,
                 )
@@ -750,16 +747,25 @@ class InstanceSegTester(TesterBase):
         momentum_gt,
         gt_instance,
         counts,
-        criterion,
         num_classes,
         pred_instance_labels,
     ):
         """Evaluate momentum regression per class for matched instances."""
         try:
+            # Per-batch slice of the (concatenated) per-point momentum targets.
+            # The tester runs one event at a time (b=0), so this is just the
+            # first `counts[0]` rows; inlined here so momentum eval does not
+            # depend on any particular loss class's internals (detector-v5 keeps
+            # criteria in `criteria_by_label`, not the old `criteria` list).
             b = 0
-            mom_gt_b = criterion._get_batch_tensor(
-                momentum_gt, b, counts, torch.device("cpu"), None
-            )
+            if isinstance(momentum_gt, torch.Tensor):
+                start = sum(counts[:b])
+                end = start + counts[b]
+                mom_gt_b = momentum_gt[start:end].to(torch.device("cpu"))
+            else:
+                mom_gt_b = momentum_gt[b].to(torch.device("cpu"))
+            if mom_gt_b.dim() == 2 and mom_gt_b.shape[1] == 1:
+                mom_gt_b = mom_gt_b.squeeze(1)
 
             inst_b = gt_instance.squeeze(-1)
             if inst_b.dim() == 0:
