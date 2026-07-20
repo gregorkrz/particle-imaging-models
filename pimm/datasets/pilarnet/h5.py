@@ -213,27 +213,25 @@ class PILArNetH5Dataset(PILArNetOverlayMixin, Dataset):
 
         for h5_file in self.h5_files:
             try:
-                # Check if points count file exists
+                # A sibling <shard>_points.npy caches per-event point counts so
+                # startup skips a full rescan. When absent, count on the fly and
+                # write the cache so subsequent runs (and other splits sharing
+                # the shard) are fast. See scripts/pilarnet/build_points_index.py
+                # to precompute these in parallel.
                 points_file = h5_file.replace(".h5", "_points.npy")
                 if os.path.exists(points_file):
                     npoints = np.load(points_file)
-                    index = np.argwhere(npoints >= self.min_points).flatten()
                 else:
-                    # No points file, count on the fly
                     log.info(
                         f"No points count file for {h5_file}, counting points on the fly"
                     )
                     with h5py.File(h5_file, "r", libver="latest", swmr=True) as f:
-                        # Get all point counts
-                        npoints = []
-                        for i in range(f['point'].shape[0]):
-                            npoint = f['point'][i].size // 8
-                            npoints.append(npoint)
-                        npoints = np.array(npoints)
-                        index = np.argwhere(npoints >= self.min_points).flatten()
-                        self.file_events.append(npoints.shape[0])
-                if os.path.exists(points_file):
-                    self.file_events.append(int(npoints.shape[0]))
+                        npoints = np.array(
+                            [f["point"][i].size // 8 for i in range(f["point"].shape[0])]
+                        )
+                    self._save_points_cache(points_file, npoints, log)
+                index = np.argwhere(npoints >= self.min_points).flatten()
+                self.file_events.append(int(npoints.shape[0]))
             except Exception as e:
                 log.warning(f"Error processing {h5_file}: {e}")
                 index = np.array([])
@@ -246,6 +244,27 @@ class PILArNetH5Dataset(PILArNetOverlayMixin, Dataset):
         log.info(
             f"Found {self.cumulative_lengths[-1]} point clouds with at least {self.min_points} points"
         )
+
+    @staticmethod
+    def _save_points_cache(points_file, npoints, log):
+        """Persist per-event point counts next to the shard for fast reindexing.
+
+        Best-effort: a read-only data dir or a race with another rank must never
+        break index building, so failures are logged and swallowed. The write is
+        atomic (tmp + rename) so a killed process can't leave a truncated cache.
+        """
+        try:
+            tmp = f"{points_file}.tmp.{os.getpid()}.npy"
+            np.save(tmp, npoints)
+            os.replace(tmp, points_file)
+            log.info(f"Wrote points count cache: {points_file}")
+        except Exception as e:  # noqa: BLE001 - caching is optional
+            log.warning(f"Could not write points cache {points_file}: {e}")
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
 
     def h5py_worker_init(self):
         """Initialize h5py files for each worker."""
