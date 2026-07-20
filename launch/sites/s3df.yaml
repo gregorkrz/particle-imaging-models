@@ -14,5 +14,9 @@ slurm:
 container:
   runtime: none
 
+train:
+  python: .venv/bin/python
+
 env:
   NCCL_SOCKET_IFNAME: "^docker0,lo"
+  PIMM_HF_CACHE: /sdf/data/neutrino/gregork/hf_cache

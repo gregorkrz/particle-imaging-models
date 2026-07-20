@@ -60,6 +60,7 @@ class Train:
     code_copy: bool = True
     python: str | None = None
     options: SuppressedDict = field(default_factory=dict)
+    test: bool = False
 
 
 @dataclass(kw_only=True)

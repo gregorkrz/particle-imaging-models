@@ -44,6 +44,11 @@ while getopts "p:c:n:w:g:m:" opt; do
   esac
 done
 
+# shift past processed options; getopts already consumed any `--` delimiter, so
+# the remainder is the passthrough (e.g. `--options key=val ...` from pimm submit)
+shift $((OPTIND - 1))
+EXTRA_OPTIONS="$*"
+
 if [ "${CONFIG}" != "None" ]; then
   config_ref="${CONFIG#./}"
   repo_config_prefix="${ROOT_DIR}/configs/"
@@ -106,4 +111,5 @@ echo " =========> RUN TASK <========="
 
 $PYTHON -u pimm/$TEST_CODE \
   --config-file "$CONFIG_DIR" \
-  --options save_path="$EXP_DIR" weight="${MODEL_DIR}"/"${WEIGHT}".pth
+  --options save_path="$EXP_DIR" weight="${MODEL_DIR}"/"${WEIGHT}".pth \
+  $EXTRA_OPTIONS
