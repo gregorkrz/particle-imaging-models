@@ -59,10 +59,24 @@ container:
   runtime: none
   image: docker.io/gkrz/pimm_dev:v1
 
-env: # put secrets in .env, not here!
+env:
   PYTHONFAULTHANDLER: "1"
-  # WANDB_API_KEY is best passed at launch time or baked into the image's env.
-  # EXTRA_VARIABLE: "value"
+  # The local .env is NOT staged to the VM (it holds s3df paths), so set the
+  # gcloud environment here. Paths point into the gcsfuse-mounted bucket
+  # (gcs_mount_path=/mnt/gcs == gs://lartpc-artifacts).
+  #
+  # Training data: upload the PILArNet v3 set to gs://lartpc-artifacts/pilarnet
+  # (with train/ val/ test/ subdirs of *.h5) so the loader finds it here.
+  PILARNET_DATA_ROOT_V3: /mnt/gcs/pilarnet
+  # W&B scratch/cache/artifacts on local VM disk (fast). gcsfuse is poor for
+  # W&B's many small writes; the run uploads to wandb.ai regardless, and these
+  # dirs are just ephemeral working space, so local /tmp is the right home.
+  WANDB_DIR: /tmp/wandb
+  WANDB_CACHE_DIR: /tmp/wandb/cache
+  WANDB_ARTIFACT_DIR: /tmp/wandb/artifacts
+  # WANDB_API_KEY is a secret -- do NOT commit it here. Pass it at submit time:
+  #   uv run pimm submit --site gcloud ... --run.wandb-api-key "$WANDB_API_KEY"
+  # (the submit scripts' --gcloud branch already forwards $WANDB_API_KEY).
 
 # Per-run defaults are valid here, but reusable run choices usually belong in
 # launch/runs/*.yaml so the site profile remains portable.

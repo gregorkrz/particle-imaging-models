@@ -32,10 +32,13 @@ DEFAULT_BOOT_DISK_GB = 200
 DEFAULT_CODE_PREFIX = "_pimm_code"
 DEFAULT_STAGE_DIR = "/tmp/pimm_src"
 # Files never worth shipping to GCS with the source (a Python regex for
-# `gsutil rsync -x`): VCS/venv/caches and large data/checkpoint artifacts.
+# `gsutil rsync -x`): VCS/venv/caches, large data/checkpoint artifacts, and
+# `.env` -- the local .env is site-specific (e.g. s3df paths) and train.sh
+# would source it and clobber the gcloud site's env; set gcloud env in the site
+# config instead.
 STAGE_EXCLUDE = (
     r"(\.git/|\.venv/|__pycache__/|\.pytest_cache/|\.mypy_cache/|"
-    r"exp/|slurm_logs/|\.pyc$|\.h5$|\.pth$)"
+    r"exp/|slurm_logs/|(^|/)\.env$|\.pyc$|\.h5$|\.pth$)"
 )
 
 

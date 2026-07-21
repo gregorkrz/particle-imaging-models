@@ -16,6 +16,7 @@ def _config(**overrides):
         project="my-proj", location="us-central1", machine_type="a2-highgpu-1g"
     )
     cfg["paths"]["exp_root"] = "gs://my-bucket/pimm_exp"
+    cfg["resources"]["time"] = "24:00:00"  # pin: independent of the site yaml
     cfg["run"] = {"name": "gcloud-render", "timestamp": False}
     cfg["train"]["config"] = "tests/tiny_semseg"
     for key, value in overrides.items():

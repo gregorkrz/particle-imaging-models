@@ -11,9 +11,12 @@ set -euo pipefail
 CONFIG=panda/panseg/detector-v5-pt-v3m2-ft-joint-pxpypz-fft-noaug
 
 if [ "${1:-}" = "--gcloud" ]; then
+  # Forward the W&B key from the shell (export WANDB_API_KEY=... first) so it is
+  # not committed in the site config; empty is fine if you don't use W&B.
   uv run pimm submit \
     --site gcloud \
     --resources.nnodes 1 \
+    --run.wandb-api-key "${WANDB_API_KEY:-}" \
     --train.config "$CONFIG"
 else
   uv run pimm submit \
