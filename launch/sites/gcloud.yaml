@@ -1,0 +1,67 @@
+site: gcloud
+
+# Submit training to Google Cloud Batch (a managed, queue-based batch service --
+# the closest analog to a Slurm queue). A submitted job queues, provisions a
+# single A100 VM, runs the pimm dev container image, and tears the VM down.
+#
+# Output artifacts (checkpoints, logs, config) are written to a GCS bucket that
+# Batch mounts on the VM via gcsfuse. Set `paths.exp_root` to a gs:// URI; the
+# gcloud backend derives the bucket, mounts it at `scheduler_options.gcs_mount_path`,
+# and rewrites EXP_ROOT to that local mount -- so the training/checkpoint code
+# needs no cloud-storage awareness.
+#
+# Prerequisites (not automated):
+#   - An authenticated `gcloud` CLI on the machine you run `pimm submit` from.
+#   - The dev image published to Docker Hub (see .github/workflows/docker-dev.yml),
+#     e.g. docker.io/gkrz/pimm_dev:v1.
+#   - A GCS bucket for output, and (for A100) quota in the chosen region.
+#
+# Fill in every REPLACE_ME_* value below before submitting.
+
+paths:
+  # The source is baked into the dev image at /opt/pimm/src; the rendered job
+  # runs `cd /opt/pimm/src && sh scripts/train.sh ...` inside the container.
+  repo_root: /opt/pimm/src
+  # gs:// output. Mounted read-write via gcsfuse; EXP_ROOT becomes
+  # <gcs_mount_path>/<prefix> on the VM.
+  exp_root: gs://REPLACE_ME_BUCKET/pimm_exp
+
+resources:
+  scheduler: gcloud
+  nnodes: 1
+  nproc_per_node: 1 # a2-highgpu-1g bundles 1x A100 40GB
+  cpus_per_proc: 12
+  time: "24:00:00" # -> Cloud Batch maxRunDuration
+  scheduler_options:
+    project: REPLACE_ME_PROJECT
+    location: us-central1 # region with A100 quota
+    machine_type: a2-highgpu-1g # a2-ultragpu-1g for 1x A100 80GB
+    provisioning_model: STANDARD # or SPOT for preemptible/cheaper
+    boot_disk_gb: 200
+    gcs_mount_path: /mnt/gcs # where the exp_root bucket is fuse-mounted
+    # Only needed for non-a2 machine types (a2-* bundle their A100s):
+    # accelerator_type: nvidia-tesla-a100
+    # accelerator_count: 1
+    # service_account: my-batch-sa@REPLACE_ME_PROJECT.iam.gserviceaccount.com
+    # network: projects/REPLACE_ME_PROJECT/global/networks/default
+    # subnetwork: projects/REPLACE_ME_PROJECT/regions/us-central1/subnetworks/default
+
+container:
+  # Cloud Batch itself runs the image, so there is no nested `docker run`; keep
+  # runtime `none`. `image` is the Docker Hub dev tag published by CI.
+  runtime: none
+  image: docker.io/gkrz/pimm_dev:v1
+
+env: # put secrets in .env, not here!
+  PYTHONFAULTHANDLER: "1"
+  # WANDB_API_KEY is best passed at launch time or baked into the image's env.
+  # EXTRA_VARIABLE: "value"
+
+# Per-run defaults are valid here, but reusable run choices usually belong in
+# launch/runs/*.yaml so the site profile remains portable.
+# run:
+#   wandb_project: my-project
+# train:
+#   config: panda/panseg/detector-v5-pt-v3m2-ft-joint-pxpypz-fft
+#   weight: hf://DeepLearnPhysics/panda-particle
+#   options: {}

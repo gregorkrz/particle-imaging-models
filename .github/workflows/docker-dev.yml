@@ -1,0 +1,113 @@
+name: Docker dev image
+
+# Builds the self-contained pimm dev image (env + source baked in) and publishes
+# it to Docker Hub as docker.io/<DOCKERHUB_USERNAME>/pimm_dev:vN, auto-incrementing
+# from the highest existing v<N> tag (starts at v1). This is the image the gcloud
+# launch site runs on Google Cloud Batch.
+#
+# Required repo secrets:
+#   DOCKERHUB_USERNAME  - Docker Hub account that owns the pimm_dev repo (e.g. gkrz)
+#   DOCKERHUB_TOKEN     - a Docker Hub access token with read+write scope
+#
+# Trigger it from the Actions tab (workflow_dispatch); optionally also tag :latest.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or SHA to build
+        required: true
+        default: fork-main
+        type: string
+      latest:
+        description: Also push the :latest tag
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPO: pimm_dev
+
+jobs:
+  build-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Compute next version tag
+        id: version
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo="${DOCKERHUB_USERNAME}/${IMAGE_REPO}"
+          # JWT for the Docker Hub API (works for private repos too).
+          token="$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)"
+          max=0
+          url="https://hub.docker.com/v2/repositories/${repo}/tags?page_size=100"
+          while [ -n "$url" ] && [ "$url" != "null" ]; do
+            resp="$(curl -fsS -H "Authorization: JWT ${token}" "$url" || echo '{}')"
+            for n in $(echo "$resp" | jq -r '.results[]?.name // empty'); do
+              if [[ "$n" =~ ^v([0-9]+)$ ]]; then
+                num="${BASH_REMATCH[1]}"
+                if [ "$num" -gt "$max" ]; then max="$num"; fi
+              fi
+            done
+            url="$(echo "$resp" | jq -r '.next')"
+          done
+          next="v$((max + 1))"
+          echo "tag=${next}" >> "$GITHUB_OUTPUT"
+          echo "image=docker.io/${repo}:${next}" >> "$GITHUB_OUTPUT"
+          echo "latest=docker.io/${repo}:latest" >> "$GITHUB_OUTPUT"
+          echo "Publishing docker.io/${repo}:${next}" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and publish dev image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .github/docker/Dockerfile.dev
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.version.outputs.image }}
+            ${{ inputs.latest && steps.version.outputs.latest || '' }}
+          build-args: |
+            TORCH_VERSION=2.10.0
+            CUDA_VERSION=12.6
+            CUDNN_VERSION=9
+            TORCH_CUDA_ARCH_LIST=7.0 7.5 8.0 8.6 8.9 9.0
+          provenance: false
+          sbom: false
+
+      - name: Summary
+        run: |
+          {
+            echo "Built and pushed: ${{ steps.version.outputs.image }}"
+            echo ""
+            echo "Point the gcloud site at it:"
+            echo '```yaml'
+            echo "container:"
+            echo "  image: ${{ steps.version.outputs.image }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
