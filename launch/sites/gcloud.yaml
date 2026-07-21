@@ -24,18 +24,18 @@ paths:
   repo_root: /opt/pimm/src
   # gs:// output. Mounted read-write via gcsfuse; EXP_ROOT becomes
   # <gcs_mount_path>/<prefix> on the VM.
-  exp_root: gs://REPLACE_ME_BUCKET/pimm_exp
+  exp_root: gs://lartpc-artifacts/pimm_exp
 
 resources:
   scheduler: gcloud
   nnodes: 1
   nproc_per_node: 1 # a2-highgpu-1g bundles 1x A100 40GB
   cpus_per_proc: 12
-  time: "24:00:00" # -> Cloud Batch maxRunDuration
+  time: "04:00:00" # -> Cloud Batch maxRunDuration
   scheduler_options:
-    project: REPLACE_ME_PROJECT
-    location: us-central1 # region with A100 quota
-    machine_type: a2-highgpu-1g # a2-ultragpu-1g for 1x A100 80GB
+    project: gcp-physics
+    location: us-west1 # Oregon (has A100 40GB quota in zone us-west1-b)
+    machine_type: a2-highgpu-1g # 1x A100 40GB (a2-ultragpu-1g would be 80GB)
     provisioning_model: STANDARD # or SPOT for preemptible/cheaper
     boot_disk_gb: 200
     gcs_mount_path: /mnt/gcs # where the exp_root bucket is fuse-mounted
