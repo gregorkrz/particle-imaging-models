@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Branch, tag, or SHA to build
+        description: Branch, tag, or SHA to build (NOT the image version; e.g. main)
         required: true
-        default: fork-main
+        default: main
         type: string
       latest:
         description: Also push the :latest tag
