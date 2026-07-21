@@ -43,7 +43,8 @@ def test_sanitize_job_name():
 
 def test_build_batch_job_structure():
     cfg = _config()
-    job, script = build_batch_job(cfg, cfg["run"]["name"])
+    cfg["resources"]["scheduler_options"]["stage_code"] = False  # baked-image path
+    job, script, stage_plan = build_batch_job(cfg, cfg["run"]["name"])
 
     task_spec = job["taskGroups"][0]["taskSpec"]
     container = task_spec["runnables"][0]["container"]
@@ -59,7 +60,10 @@ def test_build_batch_job_structure():
     assert container["imageUri"] == "docker.io/gkrz/pimm_dev:v1"
     assert container["entrypoint"] == "/bin/bash"
     assert "docker run" not in script
+    # Staging off: run from the baked-in source, no copy step.
+    assert stage_plan is None
     assert "sh /opt/pimm/src/scripts/train.sh -m 1 -g 1" in script
+    assert "gcsfuse mount" not in script
 
     # A100 VM with drivers installed, and the time budget becomes a duration.
     assert instance["policy"]["machineType"] == "a2-highgpu-1g"
@@ -70,6 +74,24 @@ def test_build_batch_job_structure():
     json.dumps(job)
 
 
+def test_code_staging_default():
+    cfg = _config()  # stage_code defaults to True
+    job, script, stage_plan = build_batch_job(cfg, "gcloud-render")
+
+    # Staged to a sibling prefix of exp_root in the SAME bucket.
+    assert stage_plan is not None
+    local_root, gs_dest = stage_plan
+    assert gs_dest == "gs://my-bucket/_pimm_code/gcloud-render"
+    assert local_root  # the submit-host checkout root
+
+    # The job copies the source off the mount and runs from local disk, with
+    # PYTHONPATH shadowing the baked-in install.
+    assert "cp -a /mnt/gcs/_pimm_code/gcloud-render/. /tmp/pimm_src/" in script
+    assert "export PYTHONPATH=/tmp/pimm_src" in script
+    assert "cd /tmp/pimm_src" in script
+    assert "sh /tmp/pimm_src/scripts/train.sh -m 1 -g 1" in script
+
+
 def test_explicit_accelerator_for_non_a2():
     cfg = _config()
     cfg["resources"]["scheduler_options"].update(
@@ -77,7 +99,7 @@ def test_explicit_accelerator_for_non_a2():
         accelerator_type="nvidia-tesla-a100",
         accelerator_count=1,
     )
-    job, _ = build_batch_job(cfg, cfg["run"]["name"])
+    job, _, _ = build_batch_job(cfg, cfg["run"]["name"])
     accel = job["allocationPolicy"]["instances"][0]["policy"]["accelerators"][0]
     assert accel == {"type": "nvidia-tesla-a100", "count": 1}
 

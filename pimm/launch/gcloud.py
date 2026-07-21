@@ -17,16 +17,26 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shlex
+import shutil
 import subprocess
 import tempfile
 from typing import Any
 
 from .local import build_train_sh_command, redact_script, render_script
-from .utils import scheduler, slurm_time_to_minutes, write_text
+from .utils import ROOT, as_bool, scheduler, shell_join, slurm_time_to_minutes, write_text
 
 DEFAULT_MOUNT_PATH = "/mnt/gcs"
 DEFAULT_PROVISIONING_MODEL = "STANDARD"
 DEFAULT_BOOT_DISK_GB = 200
+DEFAULT_CODE_PREFIX = "_pimm_code"
+DEFAULT_STAGE_DIR = "/tmp/pimm_src"
+# Files never worth shipping to GCS with the source (a Python regex for
+# `gsutil rsync -x`): VCS/venv/caches and large data/checkpoint artifacts.
+STAGE_EXCLUDE = (
+    r"(\.git/|\.venv/|__pycache__/|\.pytest_cache/|\.mypy_cache/|"
+    r"exp/|slurm_logs/|\.pyc$|\.h5$|\.pth$)"
+)
 
 
 def parse_gs_uri(uri: str) -> tuple[str, str]:
@@ -57,8 +67,15 @@ def sanitize_job_name(run_name: str) -> str:
     return name[:63].rstrip("-")
 
 
-def build_batch_job(cfg: dict[str, Any], run_name: str) -> tuple[dict[str, Any], str]:
-    """Return ``(job_spec, inner_script)`` for a single-node A100 Batch job."""
+def build_batch_job(
+    cfg: dict[str, Any], run_name: str
+) -> tuple[dict[str, Any], str, tuple[str, str] | None]:
+    """Build a single-node A100 Batch job.
+
+    Returns ``(job_spec, inner_script, stage_plan)`` where ``stage_plan`` is
+    ``(local_source_root, gs_dest)`` when code staging is enabled (else None) --
+    the caller performs the actual upload.
+    """
     opts = cfg.get("resources", {}).get("scheduler_options", {}) or {}
     mount_path = str(opts.get("gcs_mount_path") or DEFAULT_MOUNT_PATH).rstrip("/")
 
@@ -72,8 +89,42 @@ def build_batch_job(cfg: dict[str, Any], run_name: str) -> tuple[dict[str, Any],
     render_cfg = copy.deepcopy(cfg)
     render_cfg.setdefault("container", {})["runtime"] = "none"
     render_cfg.setdefault("paths", {})["exp_root"] = exp_root_local
+
+    # Code staging: rsync the local checkout to the bucket at submit time, then
+    # have the job copy it off the gcsfuse mount to a local dir and run from
+    # there -- so edits take effect without rebuilding the image (the image then
+    # supplies only the environment/deps). On by default; opt out per site.
+    stage = as_bool(opts.get("stage_code", True))
+    stage_plan: tuple[str, str] | None = None
+    stage_dir = str(opts.get("stage_dir") or DEFAULT_STAGE_DIR).rstrip("/")
+    code_mount = ""
+    if stage:
+        code_prefix = str(opts.get("code_prefix") or DEFAULT_CODE_PREFIX).strip("/")
+        code_rel = f"{code_prefix}/{run_name}"
+        code_mount = f"{mount_path}/{code_rel}"
+        # Run from the staged copy and make it win over the baked-in install.
+        render_cfg["paths"]["repo_root"] = stage_dir
+        render_cfg.setdefault("env", {})["PYTHONPATH"] = stage_dir
+        stage_plan = (str(ROOT), f"gs://{bucket}/{code_rel}")
+
     train_cmd = build_train_sh_command(render_cfg, run_name)
     script = render_script(render_cfg, train_cmd, run_name)
+
+    if stage:
+        # Copy the staged source off the (high-latency) gcsfuse mount to local
+        # disk before cd-ing into it. Injected right before render_script's
+        # `cd <repo_root>` line.
+        cd_line = f"cd {shlex.quote(stage_dir)}"
+        copy_block = "\n".join(
+            [
+                "echo '# staging pimm source from gcsfuse mount'",
+                f"mkdir -p {shlex.quote(stage_dir)}",
+                f"cp -a {shlex.quote(code_mount)}/. {shlex.quote(stage_dir)}/",
+            ]
+        )
+        if cd_line not in script:
+            raise SystemExit("could not inject code-staging step into rendered script")
+        script = script.replace(cd_line, f"{copy_block}\n{cd_line}", 1)
 
     image = cfg.get("container", {}).get("image")
     provisioning = str(opts.get("provisioning_model") or DEFAULT_PROVISIONING_MODEL)
@@ -139,7 +190,26 @@ def build_batch_job(cfg: dict[str, Any], run_name: str) -> tuple[dict[str, Any],
         "allocationPolicy": allocation_policy,
         "logsPolicy": {"destination": "CLOUD_LOGGING"},
     }
-    return job_spec, script
+    return job_spec, script, stage_plan
+
+
+def stage_code(local_root: str, gs_dest: str, *, dry_run: bool) -> None:
+    """Mirror the local checkout to ``gs_dest`` with ``gsutil rsync``."""
+    argv = [
+        "gsutil", "-m", "rsync", "-r", "-x", STAGE_EXCLUDE, local_root, gs_dest,
+    ]
+    if dry_run:
+        print(f"# would stage code: {shell_join(argv)}")
+        return
+    if shutil.which("gsutil") is None:
+        raise SystemExit(
+            "gsutil not found; it is required to stage code to GCS "
+            "(install the Google Cloud SDK, or set scheduler_options.stage_code=false)"
+        )
+    print(f"# staging code -> {gs_dest}")
+    rc = subprocess.run(argv).returncode
+    if rc != 0:
+        raise SystemExit(f"gsutil rsync failed with exit code {rc}")
 
 
 def run_gcloud(
@@ -157,9 +227,13 @@ def run_gcloud(
     project = opts["project"]
     location = opts["location"]
 
-    job_spec, script = build_batch_job(cfg, run_name)
+    job_spec, script, stage_plan = build_batch_job(cfg, run_name)
     job_name = sanitize_job_name(run_name)
     job_json = json.dumps(job_spec, indent=2)
+
+    # Upload the local checkout before submitting (a no-op print under --dry-run).
+    if stage_plan is not None:
+        stage_code(stage_plan[0], stage_plan[1], dry_run=dry_run)
 
     # The inner training script is embedded as a JSON string, so its `export`
     # lines can't be redacted after serialization. Redact the script itself and

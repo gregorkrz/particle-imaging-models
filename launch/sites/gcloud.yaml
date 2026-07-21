@@ -39,6 +39,13 @@ resources:
     provisioning_model: STANDARD # or SPOT for preemptible/cheaper
     boot_disk_gb: 200
     gcs_mount_path: /mnt/gcs # where the exp_root bucket is fuse-mounted
+    # Code staging: rsync the local checkout to gs://<bucket>/_pimm_code/<run>
+    # at submit time; the job copies it off the mount and runs from local disk,
+    # so edits take effect without rebuilding the image (the image then supplies
+    # only the environment/deps). Requires gsutil on the submit host.
+    stage_code: true
+    # code_prefix: _pimm_code   # bucket sub-path for staged source
+    # stage_dir: /tmp/pimm_src  # where the VM copies the source before running
     # Only needed for non-a2 machine types (a2-* bundle their A100s):
     # accelerator_type: nvidia-tesla-a100
     # accelerator_count: 1
