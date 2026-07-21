@@ -23,7 +23,7 @@ resources:
   # constraint: gpu
   # dependency: "afterok:12345"
   # time: "24:00:00"
-  mem: 512G
+  mem: 64G  # peak host RSS observed ~4 GB; 64G still leaves generous headroom for dataloaders
   # output: "slurm_logs/slurm-%j.out"
   # error: "slurm_logs/slurm-%j.err"
   # gpu_directive: gres # or gpus-per-node
