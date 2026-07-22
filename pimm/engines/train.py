@@ -44,7 +44,12 @@ from pimm.distributed import (
     unwrap_model,
 )
 from pimm.models import build_model
-from pimm.utils.events import EventStorage, ExceptionWriter, WandbSummaryWriter
+from pimm.utils.events import (
+    EventStorage,
+    ExceptionWriter,
+    WandbSummaryWriter,
+    _to_serializable,
+)
 from pimm.utils.logger import get_root_logger
 from pimm.utils.optimizer import build_optimizer
 from pimm.utils.registry import Registry
@@ -428,9 +433,15 @@ class Trainer(TrainerBase):
     def build_model(self):
         """Construct the model and wrap it for the configured parallel strategy."""
         model = build_model(self.cfg.model)
-        n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        self.n_total_params = sum(p.numel() for p in model.parameters())
+        self.n_trainable_params = sum(
+            p.numel() for p in model.parameters() if p.requires_grad
+        )
         # logger.info(f"Model: \n{self.model}")
-        self.logger.info(f"Num params: {n_parameters:,}")
+        self.logger.info(
+            f"Num params: {self.n_trainable_params:,} trainable / "
+            f"{self.n_total_params:,} total"
+        )
         model = prepare_model(model, self.cfg, self.parallel_context)
         self.logger.info(
             f"Parallel strategy: {self.parallel_context.strategy}, device: {self.parallel_context.device}"
@@ -440,10 +451,15 @@ class Trainer(TrainerBase):
     def build_writer(self):
         """Create a main-rank summary writer for TensorBoard or W&B."""
         if self.cfg.get('use_wandb', False):
+            # Surface model size in the W&B config so runs are sortable/filterable
+            # by parameter count. Counts are set in build_model (run before this).
+            config = _to_serializable(self.cfg)
+            config['n_trainable_params'] = getattr(self, 'n_trainable_params', None)
+            config['n_total_params'] = getattr(self, 'n_total_params', None)
             wandb_kwargs = dict(
                 project=self.cfg.get('wandb_project', 'pimm'),
                 name=self.cfg.get('wandb_run_name', os.path.basename(self.cfg.save_path)),
-                config=self.cfg,
+                config=config,
                 step_offset=self.cfg.get('log_step_offset', 0),
             )
             for cfg_key, wandb_key in (
