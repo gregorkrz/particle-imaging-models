@@ -1,9 +1,15 @@
 import json
+import re
 
 import pytest
 
 from pimm.launch.config import finalize_config, load_config, validate_launch_config
-from pimm.launch.gcloud import build_batch_job, parse_gs_uri, sanitize_job_name
+from pimm.launch.gcloud import (
+    STAGE_EXCLUDE,
+    build_batch_job,
+    parse_gs_uri,
+    sanitize_job_name,
+)
 
 
 TIMESTAMP = "2026-01-02_03-04-05"
@@ -22,6 +28,37 @@ def _config(**overrides):
     for key, value in overrides.items():
         cfg[key] = value
     return finalize_config(cfg, launch_timestamp=TIMESTAMP, require_config=True)
+
+
+def test_stage_exclude_matches_nested_paths():
+    # `gsutil rsync -x` anchors the pattern at the start of the relative path
+    # (re.match), so the exclude must catch caches/artifacts at any depth, not
+    # just the repo root.
+    pat = re.compile(STAGE_EXCLUDE)
+
+    excluded = [
+        "pimm/__pycache__/utils.cpython-311.pyc",
+        "__pycache__/foo.pyc",
+        "pimm/models/foo.pyc",
+        ".git/config",
+        "pimm/sub/.git/config",
+        ".venv/lib/x.py",
+        ".env",
+        "conf/.env",
+        "exp/run1/ckpt.pth",
+        "data/x.h5",
+        "pimm/weights/model.pth",
+    ]
+    kept = [
+        "pimm/launch/gcloud.py",
+        "pimm/__init__.py",
+        "README.md",
+        "configs/base.py",
+    ]
+    for p in excluded:
+        assert pat.match(p), f"expected {p!r} to be excluded"
+    for p in kept:
+        assert not pat.match(p), f"expected {p!r} to be kept"
 
 
 def test_parse_gs_uri():
@@ -53,8 +90,8 @@ def test_build_batch_job_structure():
 
     # gs:// bucket is mounted; EXP_ROOT points at the mount, not the URI.
     assert task_spec["volumes"][0]["gcs"]["remotePath"] == "my-bucket"
-    assert task_spec["volumes"][0]["mountPath"] == "/mnt/gcs"
-    assert "export EXP_ROOT=/mnt/gcs/pimm_exp" in script
+    assert task_spec["volumes"][0]["mountPath"] == "/mnt/disks/gcs"
+    assert "export EXP_ROOT=/mnt/disks/gcs/pimm_exp" in script
     assert "gs://" not in script
 
     # Cloud Batch runs the image directly: no nested docker, train.sh invoked.
@@ -87,10 +124,59 @@ def test_code_staging_default():
 
     # The job copies the source off the mount and runs from local disk, with
     # PYTHONPATH shadowing the baked-in install.
-    assert "cp -a /mnt/gcs/_pimm_code/gcloud-render/. /tmp/pimm_src/" in script
+    assert "cp -a /mnt/disks/gcs/_pimm_code/gcloud-render/. /tmp/pimm_src/" in script
     assert "export PYTHONPATH=/tmp/pimm_src" in script
     assert "cd /tmp/pimm_src" in script
     assert "sh /tmp/pimm_src/scripts/train.sh -m 1 -g 1" in script
+
+
+def test_container_shm_options():
+    # Default: share host IPC so DataLoader workers aren't capped at 64 MB shm,
+    # and raise the open-file hard limit so gcsfuse checkpoint writes don't hit
+    # EMFILE ("Too many open files") when publishing the DCP directory.
+    cfg = _config()
+    job, _, _ = build_batch_job(cfg, cfg["run"]["name"])
+    container = job["taskGroups"][0]["taskSpec"]["runnables"][0]["container"]
+    assert container["options"] == "--ipc=host --ulimit nofile=65536:65536"
+
+    # An explicit shm_size sizes an isolated /dev/shm instead.
+    cfg = _config()
+    cfg["resources"]["scheduler_options"]["shm_size"] = "16g"
+    job, _, _ = build_batch_job(cfg, cfg["run"]["name"])
+    container = job["taskGroups"][0]["taskSpec"]["runnables"][0]["container"]
+    assert container["options"] == "--shm-size=16g --ulimit nofile=65536:65536"
+
+
+def test_gcs_file_cache_mount_options():
+    # On by default: the bucket is mounted with the gcsfuse file cache enabled
+    # (a `--cache-dir` turns it on) so the dataset's random reads hit local disk
+    # after first touch.
+    cfg = _config()
+    job, _, _ = build_batch_job(cfg, cfg["run"]["name"])
+    volume = job["taskGroups"][0]["taskSpec"]["volumes"][0]
+    assert volume["mountOptions"] == [
+        "--cache-dir /mnt/disks/gcsfuse-cache",
+        "--file-cache-max-size-mb -1",
+    ]
+
+    # Overridable dir/size.
+    cfg = _config()
+    cfg["resources"]["scheduler_options"].update(
+        gcs_cache_dir="/mnt/disks/cache", gcs_cache_max_size_mb=100000
+    )
+    job, _, _ = build_batch_job(cfg, cfg["run"]["name"])
+    volume = job["taskGroups"][0]["taskSpec"]["volumes"][0]
+    assert volume["mountOptions"] == [
+        "--cache-dir /mnt/disks/cache",
+        "--file-cache-max-size-mb 100000",
+    ]
+
+    # Disable entirely: no mountOptions on the volume.
+    cfg = _config()
+    cfg["resources"]["scheduler_options"]["gcs_file_cache"] = False
+    job, _, _ = build_batch_job(cfg, cfg["run"]["name"])
+    volume = job["taskGroups"][0]["taskSpec"]["volumes"][0]
+    assert "mountOptions" not in volume
 
 
 def test_explicit_accelerator_for_non_a2():

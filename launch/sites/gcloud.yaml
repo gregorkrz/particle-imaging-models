@@ -37,8 +37,11 @@ resources:
     location: us-west1 # Oregon (has A100 40GB quota in zone us-west1-b)
     machine_type: a2-highgpu-1g # 1x A100 40GB (a2-ultragpu-1g would be 80GB)
     provisioning_model: STANDARD # or SPOT for preemptible/cheaper
-    boot_disk_gb: 200
-    gcs_mount_path: /mnt/gcs # where the exp_root bucket is fuse-mounted
+    boot_disk_gb: 350 # room for the gcsfuse file cache (~157 GB dataset) + OS/image
+    gcs_mount_path: /mnt/disks/gcs # where the exp_root bucket is fuse-mounted
+    # NOTE: Cloud Batch only auto-creates GCS mount dirs under /mnt/disks/; a
+    # path elsewhere (e.g. /mnt/gcs) fails gcsfuse with "stat: no such file or
+    # directory".
     # Code staging: rsync the local checkout to gs://<bucket>/_pimm_code/<run>
     # at submit time; the job copies it off the mount and runs from local disk,
     # so edits take effect without rebuilding the image (the image then supplies
@@ -46,6 +49,19 @@ resources:
     stage_code: true
     # code_prefix: _pimm_code   # bucket sub-path for staged source
     # stage_dir: /tmp/pimm_src  # where the VM copies the source before running
+    # gcsfuse file cache: the dataset is read off the mount as many small
+    # random reads; the cache pulls each object to local disk on first touch so
+    # later reads (and later epochs) skip GCS. On by default (max-size-mb=-1 =
+    # fill free disk, LRU-evicted). Raise boot_disk_gb to cache more of the
+    # ~141 GB train set; set gcs_file_cache: false to disable.
+    # gcs_file_cache: true
+    # gcs_cache_dir: /mnt/disks/gcsfuse-cache
+    # gcs_cache_max_size_mb: -1
+    # DataLoader workers pass tensors via /dev/shm, which defaults to 64 MB in a
+    # container and overflows ("unable to allocate shared memory (shm) ... (11)").
+    # The container runs with --ipc=host by default (shm bounded by host RAM);
+    # set shm_size to size an isolated /dev/shm instead (docker --shm-size value).
+    # shm_size: 16g
     # Only needed for non-a2 machine types (a2-* bundle their A100s):
     # accelerator_type: nvidia-tesla-a100
     # accelerator_count: 1
@@ -63,11 +79,11 @@ env:
   PYTHONFAULTHANDLER: "1"
   # The local .env is NOT staged to the VM (it holds s3df paths), so set the
   # gcloud environment here. Paths point into the gcsfuse-mounted bucket
-  # (gcs_mount_path=/mnt/gcs == gs://lartpc-artifacts).
+  # (gcs_mount_path=/mnt/disks/gcs == gs://lartpc-artifacts).
   #
   # Training data: upload the PILArNet v3 set to gs://lartpc-artifacts/pilarnet
   # (with train/ val/ test/ subdirs of *.h5) so the loader finds it here.
-  PILARNET_DATA_ROOT_V3: /mnt/gcs/pilarnet
+  PILARNET_DATA_ROOT_V3: /mnt/disks/gcs/pilarnet
   # W&B scratch/cache/artifacts on local VM disk (fast). gcsfuse is poor for
   # W&B's many small writes; the run uploads to wandb.ai regardless, and these
   # dirs are just ephemeral working space, so local /tmp is the right home.

@@ -4,7 +4,7 @@
 # Joint detector-v5 with px/py/pz momentum regression, WITH the random
 # geometric augmentations (RandomRotate z/x/y + RandomFlip).
 #
-# Default: submit to S3DF Slurm (4 GPUs). Pass --gcloud to submit to Google
+# Default: submit to S3DF Slurm (single GPU). Pass --gcloud to submit to Google
 # Cloud Batch instead (single A100; the gcloud site supplies its own resources).
 set -euo pipefail
 
@@ -12,17 +12,23 @@ CONFIG=panda/panseg/detector-v5-pt-v3m2-ft-joint-pxpypz-fft
 
 if [ "${1:-}" = "--gcloud" ]; then
   # Forward the W&B key from the shell (export WANDB_API_KEY=... first) so it is
-  # not committed in the site config; empty is fine if you don't use W&B.
+  # not committed in the site config. The .env is not staged to the gcloud VM,
+  # so the key must come from the shell environment.
+  if [ -z "${WANDB_API_KEY:-}" ]; then
+    echo "error: WANDB_API_KEY is not set; export it before submitting to gcloud" >&2
+    echo "  export WANDB_API_KEY=\$(grep '^WANDB_API_KEY=' .env | cut -d= -f2-)" >&2
+    exit 1
+  fi
   uv run pimm submit \
     --site gcloud \
     --resources.nnodes 1 \
-    --run.wandb-api-key "${WANDB_API_KEY:-}" \
+    --run.wandb-api-key "$WANDB_API_KEY" \
     --train.config "$CONFIG"
 else
   uv run pimm submit \
     --site s3df \
     --resources.nnodes 1 \
-    --resources.nproc-per-node 4 \
+    --resources.nproc-per-node 1 \
     --resources.time 04:00:00 \
     --train.config "$CONFIG"
 fi

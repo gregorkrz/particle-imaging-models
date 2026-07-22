@@ -26,9 +26,40 @@ from typing import Any
 from .local import build_train_sh_command, redact_script, render_script
 from .utils import ROOT, as_bool, scheduler, shell_join, slurm_time_to_minutes, write_text
 
-DEFAULT_MOUNT_PATH = "/mnt/gcs"
+# Cloud Batch only auto-creates gcsfuse mount dirs under /mnt/disks/; mounting
+# elsewhere fails with "mount: stat <path>: no such file or directory".
+DEFAULT_MOUNT_PATH = "/mnt/disks/gcs"
 DEFAULT_PROVISIONING_MODEL = "STANDARD"
 DEFAULT_BOOT_DISK_GB = 200
+# PyTorch DataLoader workers pass tensors to the main process through POSIX
+# shared memory (/dev/shm). A container's /dev/shm defaults to 64 MB, which a
+# multi-worker loader exhausts almost immediately -- the failure surfaces as
+# `RuntimeError: unable to allocate shared memory (shm) ... (11)`. Share the
+# host IPC namespace by default so shm is bounded by host RAM, not 64 MB; set
+# `scheduler_options.shm_size` (e.g. "16g") to size an isolated /dev/shm instead.
+DEFAULT_CONTAINER_OPTIONS = "--ipc=host"
+# DCP checkpoint writes create many shard files on the gcsfuse mount, and
+# gcsfuse holds a file handle per open object; publishing the checkpoint
+# directory (write shards + final rename) exhausts the default 1024 soft fd
+# limit, surfacing as `OSError: [Errno 24] Too many open files`. train.sh
+# raises the *soft* limit to 65536, but that silently fails when the
+# container's *hard* limit is lower (as it is in the Cloud Batch container),
+# so raise the hard limit here via a docker-run flag. 65536 matches the soft
+# limit train.sh targets and is ample for the checkpoint shard writes.
+DEFAULT_NOFILE_LIMIT = 65536
+# gcsfuse file cache. Training data is read straight off this mount as many
+# small random-offset reads (one HDF5 event per __getitem__), which is slow
+# over the network. Enabling the file cache pulls each object to local disk on
+# first touch, so the rest of that shard's reads -- and every later epoch --
+# hit local disk instead of GCS. `--cache-dir` is what turns the cache on (it
+# is a host path: gcsfuse runs on the VM, not in the container, and must live
+# under /mnt/disks on Batch VMs; gcsfuse creates it if missing).
+# `--file-cache-max-size-mb=-1` lets gcsfuse fill the free space on that disk
+# with LRU eviction, so it can't overflow the boot disk. To cache the full
+# dataset raise `resources.scheduler_options.boot_disk_gb` accordingly (train
+# alone is ~141 GB); disable with `scheduler_options.gcs_file_cache=false`.
+DEFAULT_GCS_CACHE_DIR = "/mnt/disks/gcsfuse-cache"
+DEFAULT_GCS_CACHE_MAX_SIZE_MB = -1
 DEFAULT_CODE_PREFIX = "_pimm_code"
 DEFAULT_STAGE_DIR = "/tmp/pimm_src"
 # Files never worth shipping to GCS with the source (a Python regex for
@@ -36,9 +67,17 @@ DEFAULT_STAGE_DIR = "/tmp/pimm_src"
 # `.env` -- the local .env is site-specific (e.g. s3df paths) and train.sh
 # would source it and clobber the gcloud site's env; set gcloud env in the site
 # config instead.
+#
+# NOTE: `gsutil rsync -x` matches the pattern against the *relative* path with
+# `re.match`, i.e. anchored at the start (see `gsutil help rsync`). So patterns
+# for anything that can appear nested must allow a leading path prefix
+# (`(.*/)?` for dirs, `.*` for suffixes) -- a bare `__pycache__/` or `\.pyc$`
+# would only ever match at the repo root and silently ship nested copies.
 STAGE_EXCLUDE = (
-    r"(\.git/|\.venv/|__pycache__/|\.pytest_cache/|\.mypy_cache/|"
-    r"exp/|slurm_logs/|(^|/)\.env$|\.pyc$|\.h5$|\.pth$)"
+    r"(.*/)?(\.git|\.venv|__pycache__|\.pytest_cache|\.mypy_cache)/|"
+    r"(exp|slurm_logs)/|"
+    r"(.*/)?\.env$|"
+    r".*\.(pyc|h5|pth)$"
 )
 
 
@@ -149,6 +188,32 @@ def build_batch_job(
             {"type": accel_type, "count": int(accel_count)}
         ]
 
+    # DataLoader workers need more shared memory than a container's 64 MB
+    # default; pass docker-run flags to the Batch container to raise it. An
+    # explicit shm_size sizes an isolated /dev/shm; otherwise share host IPC.
+    shm_size = opts.get("shm_size")
+    shm_option = f"--shm-size={shm_size}" if shm_size else DEFAULT_CONTAINER_OPTIONS
+    nofile = int(opts.get("nofile_limit") or DEFAULT_NOFILE_LIMIT)
+    container_options = f"{shm_option} --ulimit nofile={nofile}:{nofile}"
+
+    # Mount the bucket, optionally with the gcsfuse file cache turned on so the
+    # dataset's random-offset reads are served from local disk after first
+    # touch (see DEFAULT_GCS_CACHE_DIR). Batch passes mountOptions to gcsfuse as
+    # CLI flags ("--flag value" strings).
+    gcs_volume: dict[str, Any] = {
+        "gcs": {"remotePath": bucket},
+        "mountPath": mount_path,
+    }
+    if as_bool(opts.get("gcs_file_cache", True)):
+        cache_dir = str(opts.get("gcs_cache_dir") or DEFAULT_GCS_CACHE_DIR).rstrip("/")
+        cache_max_mb = int(
+            opts.get("gcs_cache_max_size_mb", DEFAULT_GCS_CACHE_MAX_SIZE_MB)
+        )
+        gcs_volume["mountOptions"] = [
+            f"--cache-dir {cache_dir}",
+            f"--file-cache-max-size-mb {cache_max_mb}",
+        ]
+
     task_spec: dict[str, Any] = {
         "runnables": [
             {
@@ -158,15 +223,11 @@ def build_batch_job(
                     "commands": ["-lc", script],
                     # gcsfuse mount lives on the host; expose it to the container.
                     "volumes": [f"{mount_path}:{mount_path}"],
+                    "options": container_options,
                 }
             }
         ],
-        "volumes": [
-            {
-                "gcs": {"remotePath": bucket},
-                "mountPath": mount_path,
-            }
-        ],
+        "volumes": [gcs_volume],
         "maxRunDuration": max_run_seconds,
         "maxRetryCount": 0,
     }
