@@ -131,8 +131,19 @@ class InstanceSegmentationEvaluator(HookBase):
         segment_key=None,
         segment_fallback_key=None,
         log_ari=True,
+        select_metric="det_f1",
+        log_val_loss=False,
     ):
-        """Configure label-specific instance metrics and logging behavior."""
+        """Configure label-specific instance metrics and logging behavior.
+
+        ``select_metric`` chooses what drives ``model_best`` when
+        ``set_current_metric`` is on: ``"det_f1"`` (default, higher-is-better
+        detection F1 of the primary label) or ``"val_head_loss"`` (lower-is-better
+        summed validation loss of the configured query heads -- e.g. for a
+        heads-only / linear-probe run where segmentation is frozen). ``log_val_loss``
+        additionally logs each head's validation loss + the total, and is implied
+        by ``select_metric="val_head_loss"``. Both reuse the eval forward pass, so
+        there is no extra cost."""
         self.every_n_steps = int(every_n_steps)
         self.stuff_threshold = float(stuff_threshold)
         self.mask_threshold = float(mask_threshold)
@@ -152,6 +163,8 @@ class InstanceSegmentationEvaluator(HookBase):
         self.log_ari = bool(log_ari)
         self.class_names = class_names
         self.stuff_classes = stuff_classes
+        self.select_metric = str(select_metric)
+        self.log_val_loss = bool(log_val_loss)
 
     @staticmethod
     def _select_for_label(value, label, default=None):
@@ -292,6 +305,26 @@ class InstanceSegmentationEvaluator(HookBase):
         ari_scores_by_label = {label: [] for label in self.labels}
         momentum_stats_by_label = {label: [] for label in self.labels}
 
+        # Optional per-head validation loss (reuses the eval forward, which in
+        # eval mode still computes the criterion because val has targets).
+        collect_head_loss = self.log_val_loss or self.select_metric == "val_head_loss"
+        head_loss_sums = {label: {} for label in self.labels}
+        head_loss_counts = {label: {} for label in self.labels}
+        head_names_by_label = {}
+        if collect_head_loss:
+            specs = self._label_specs(model)
+            for label in self.labels:
+                if label is None:
+                    head_names_by_label[label] = []
+                    continue
+                heads = self._spec_value(specs.get(label), "query_heads", []) or []
+                names = []
+                for head in heads:
+                    name = head.get("name") if isinstance(head, dict) else getattr(head, "name", None)
+                    if name:
+                        names.append(name)
+                head_names_by_label[label] = names
+
         for input_dict in self.trainer.val_loader:
             assert (
                 len(input_dict["offset"]) == 1
@@ -303,6 +336,20 @@ class InstanceSegmentationEvaluator(HookBase):
 
             with torch.no_grad():
                 output_dict = self.trainer.model(input_dict, return_point=True)
+
+            if collect_head_loss:
+                # Per-head criterion losses land in output_dict as
+                # "<label>_<head>" (see detector-v5 forward); average over events.
+                for label in self.labels:
+                    for name in head_names_by_label.get(label, []):
+                        value = output_dict.get(f"{label}_{name}")
+                        if value is None:
+                            continue
+                        v = float(value.detach().cpu()) if torch.is_tensor(value) else float(value)
+                        if not np.isfinite(v):
+                            continue
+                        head_loss_sums[label][name] = head_loss_sums[label].get(name, 0.0) + v
+                        head_loss_counts[label][name] = head_loss_counts[label].get(name, 0) + 1
 
             point = output_dict.get("point")
             if point is None:
@@ -579,18 +626,59 @@ class InstanceSegmentationEvaluator(HookBase):
                         self._metric_key(label, "ins_ari"), ari_mean, step
                     )
 
-            if self._should_set_current_metric(label):
-                self.trainer.comm_info["current_metric_value"] = det_f1
-                self.trainer.comm_info["current_metric_name"] = self._metric_key(
-                    label, "ins_det_f1"
-                )
-                current_metric_set = True
-            elif self.set_current_metric and not current_metric_set:
-                self.trainer.comm_info.setdefault("current_metric_value", det_f1)
-                self.trainer.comm_info.setdefault(
-                    "current_metric_name", self._metric_key(label, "ins_det_f1")
-                )
+            if self.select_metric == "det_f1":
+                if self._should_set_current_metric(label):
+                    self.trainer.comm_info["current_metric_value"] = det_f1
+                    self.trainer.comm_info["current_metric_name"] = self._metric_key(
+                        label, "ins_det_f1"
+                    )
+                    self.trainer.comm_info["current_metric_greater_is_better"] = True
+                    current_metric_set = True
+                elif self.set_current_metric and not current_metric_set:
+                    self.trainer.comm_info.setdefault("current_metric_value", det_f1)
+                    self.trainer.comm_info.setdefault(
+                        "current_metric_name", self._metric_key(label, "ins_det_f1")
+                    )
+                    self.trainer.comm_info.setdefault(
+                        "current_metric_greater_is_better", True
+                    )
             logged_any = True
+
+        # Per-head validation losses: log each head + the total, and (when
+        # selected) publish the total as the lower-is-better model_best metric.
+        if collect_head_loss:
+            step = _get_writer_step(self.trainer)
+            total_head_loss = 0.0
+            any_head = False
+            for label in self.labels:
+                for name, loss_sum in head_loss_sums[label].items():
+                    count = head_loss_counts[label][name]
+                    if not count:
+                        continue
+                    mean = loss_sum / count
+                    total_head_loss += mean
+                    any_head = True
+                    self.trainer.logger.info(
+                        "[{}] val head_loss[{}]={:.5f}".format(
+                            self._label_name(label), name, mean
+                        )
+                    )
+                    if self.trainer.writer is not None:
+                        self.trainer.writer.add_scalar(
+                            self._metric_key(label, f"head_loss_{name}"), mean, step
+                        )
+            if any_head:
+                self.trainer.logger.info(
+                    "val head_loss_total={:.5f}".format(total_head_loss)
+                )
+                if self.trainer.writer is not None:
+                    self.trainer.writer.add_scalar(
+                        "val/head_loss_total", total_head_loss, step
+                    )
+                if self.select_metric == "val_head_loss" and self.set_current_metric:
+                    self.trainer.comm_info["current_metric_value"] = total_head_loss
+                    self.trainer.comm_info["current_metric_name"] = "val/head_loss_total"
+                    self.trainer.comm_info["current_metric_greater_is_better"] = False
 
         if not logged_any:
             self.trainer.model.train()

@@ -31,7 +31,8 @@ def main(argv: list[str] | None = None) -> int:
             "  launch   run training locally or inside an allocation\n"
             "  submit   submit training to Slurm through submitit\n"
             "  watchdog manage supervisors for chained interactive runs\n"
-            "  export   export model weights (optionally push to the HF Hub)"
+            "  export   export model weights (optionally push to the HF Hub)\n"
+            "  run-stats plot a config's per-particle training-target distributions"
         )
         return 0
 
@@ -54,5 +55,9 @@ def main(argv: list[str] | None = None) -> int:
         from .export import main as export_main
 
         return export_main(args)
+    if command in {"run-stats", "run_stats", "stats"}:
+        from pimm.run_stats import main as run_stats_main
+
+        return run_stats_main(args)
 
     raise SystemExit(f"Unknown pimm command: {command}")

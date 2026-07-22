@@ -98,8 +98,25 @@ class CheckpointSaver(HookBase):
             return False
         current_metric_value = self.trainer.comm_info["current_metric_value"]
         current_metric_name = self.trainer.comm_info["current_metric_name"]
+        # Direction of "better". Default higher-is-better (e.g. det_f1); an
+        # evaluator selecting on a loss publishes greater_is_better=False.
+        greater_is_better = bool(
+            self.trainer.comm_info.get("current_metric_greater_is_better", True)
+        )
+        # The trainer seeds best_metric_value to -inf (correct for max-mode). For
+        # a min-mode metric flip that sentinel to +inf once, so the first eval
+        # always improves on it.
+        if not greater_is_better and not getattr(self, "_best_dir_init", False):
+            if self.trainer.best_metric_value == float("-inf"):
+                self.trainer.best_metric_value = float("inf")
+        self._best_dir_init = True
+        improved = (
+            current_metric_value > self.trainer.best_metric_value
+            if greater_is_better
+            else current_metric_value < self.trainer.best_metric_value
+        )
         is_best = False
-        if current_metric_value > self.trainer.best_metric_value:
+        if improved:
             self.trainer.best_metric_value = current_metric_value
             is_best = True
             if is_main_process():
@@ -320,8 +337,20 @@ class CheckpointSaverIteration(HookBase):
             return False
         current_metric_value = self.trainer.comm_info["current_metric_value"]
         current_metric_name = self.trainer.comm_info["current_metric_name"]
+        greater_is_better = bool(
+            self.trainer.comm_info.get("current_metric_greater_is_better", True)
+        )
+        if not greater_is_better and not getattr(self, "_best_dir_init", False):
+            if self.trainer.best_metric_value == float("-inf"):
+                self.trainer.best_metric_value = float("inf")
+        self._best_dir_init = True
+        improved = (
+            current_metric_value > self.trainer.best_metric_value
+            if greater_is_better
+            else current_metric_value < self.trainer.best_metric_value
+        )
         is_best = False
-        if current_metric_value > self.trainer.best_metric_value:
+        if improved:
             self.trainer.best_metric_value = current_metric_value
             is_best = True
             if is_main_process():

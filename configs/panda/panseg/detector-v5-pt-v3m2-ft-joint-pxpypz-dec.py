@@ -63,6 +63,19 @@ scheduler = dict(
 )
 
 # Distinguish the run in W&B from the full-finetune and linear-probe siblings.
+#
+# Also retarget model selection at the physics/classification heads rather than
+# segmentation: the decoder-only recipe exists to serve the momentum/vertex/
+# is_primary heads, so pick `model_best` on the summed *validation* head loss
+# (momentum + momentum_vec + vertex + is_primary on particle, + vertex on
+# interaction), lower-is-better, instead of the default det F1. `log_val_loss`
+# additionally logs each head's val loss and `val/head_loss_total`; it is implied
+# by select_metric="val_head_loss" but set explicitly for clarity. (Per-head
+# *training* losses are already logged as train_batch/particle_momentum etc.)
 hooks_override = {
     "WandbNamer": {"extra": "joint-pxpypz-dec"},
+    "InstanceSegmentationEvaluator": {
+        "select_metric": "val_head_loss",
+        "log_val_loss": True,
+    },
 }
