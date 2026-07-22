@@ -127,6 +127,18 @@ def postprocess_panoptic(
     stuff_classes = stuff_classes or set()
     num_classes = query_classes.shape[1] - 1
 
+    # Under bfloat16 AMP the head outputs are bf16, but the point-wise output
+    # buffers below are float32; index-put assignments (and score math flowing
+    # into them) require matching dtypes. Normalize every incoming float
+    # prediction to float32 up front so all downstream writes match -- and the
+    # written predictions are float32 regardless of the AMP dtype.
+    query_masks = query_masks.float()
+    query_classes = query_classes.float()
+    if stuff_probs is not None:
+        stuff_probs = stuff_probs.float()
+    if pred_iou is not None:
+        pred_iou = pred_iou.float()
+
     # threshold masks
     mask_sigmoid = query_masks.sigmoid()
     thresholded_masks = mask_sigmoid > mask_threshold
@@ -160,9 +172,15 @@ def postprocess_panoptic(
         (num_points,), -1, dtype=torch.long, device=device
     )
     
-    regression_inputs = dict(pred_regression or {})
+    # Cast regression predictions to float32 up front: under bfloat16 AMP the
+    # head outputs are bf16, but the point-wise buffers below are allocated
+    # float32, and the index-put assignments require matching dtypes (and the
+    # written predictions should be float32 regardless).
+    regression_inputs = {
+        name: values.float() for name, values in (pred_regression or {}).items()
+    }
     if pred_momentum is not None:
-        regression_inputs.setdefault("momentum", pred_momentum)
+        regression_inputs.setdefault("momentum", pred_momentum.float())
     pred_instance_regression = {}
     for name, values in regression_inputs.items():
         value_dim = values.shape[1] if values.dim() > 1 else 1
