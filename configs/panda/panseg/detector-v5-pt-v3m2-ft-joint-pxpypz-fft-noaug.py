@@ -6,9 +6,10 @@ canonical event orientation. Everything else -- model, data, losses, hooks --
 is inherited unchanged from the base config.
 
 Because there are no rotations/flips, the momentum_vec target is never mixed
-across components; the `aux_vector_keys` declaration and GridSample handling are
-harmless no-ops here but are kept identical to the base so the collected keys
-match.
+across components; the `aux_direction_keys` declaration and GridSample handling
+are harmless no-ops here but are kept identical to the base so the collected
+keys match. The target is still the unit momentum-direction vector normalized in
+decode.py.
 """
 
 _base_ = ["./detector-v5-pt-v3m2-ft-joint-pxpypz-fft.py"]
@@ -32,7 +33,7 @@ target_keys = (
 # RandomFlip removed. Merge semantics replace the list wholesale, so val/test
 # transforms (which had no augmentations) are inherited untouched.
 transform = [
-    dict(type="Update", keys_dict={"aux_vector_keys": ["momentum_vec"]}),
+    dict(type="Update", keys_dict={"aux_direction_keys": ["momentum_vec"]}),
     dict(
         type="NormalizeCoord",
         center=[384.0, 384.0, 384.0],

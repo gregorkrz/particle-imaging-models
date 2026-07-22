@@ -51,6 +51,12 @@ class QueryHeadConfig:
     # is stored as -1). When set, matched instances whose target equals this
     # sentinel are dropped from the head's regression loss. None = no filtering.
     sentinel: float | None = None
+    # Continuous heads only: L2-normalize the raw head output to a unit vector
+    # along the last (component) dimension before it is returned/supervised.
+    # Use for direction targets (e.g. the unit momentum-direction vector) so the
+    # prediction lives on the unit sphere like its target. Applied before the
+    # dim==1 squeeze; only meaningful for dim > 1.
+    unit_normalize: bool = False
 
     def __post_init__(self) -> None:
         if self.pred_key is None:
@@ -427,6 +433,10 @@ class GenericMultiTaskDecoder(nn.Module):
                     class_values = class_values.detach()
                 values = torch.cat([values, class_values], dim=-1)
             values = self.head_by_key[self._head_key(label, head.name)](values)
+            if head.unit_normalize:
+                # Project the raw output onto the unit sphere so a direction
+                # head predicts a unit vector (matches its normalized target).
+                values = F.normalize(values, dim=-1, eps=1e-6)
             squeeze = (
                 head.kind == "continuous" and head.dim == 1
                 if head.squeeze is None

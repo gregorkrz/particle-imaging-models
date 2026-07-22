@@ -272,13 +272,21 @@ def decode_event(
     data_dict["px"] = data_px.astype(np.float32)[:, None]
     data_dict["py"] = data_py.astype(np.float32)[:, None]
     data_dict["pz"] = data_pz.astype(np.float32)[:, None]
-    # Packed (N, 3) momentum vector for regression. Unlike the separate px/py/pz
-    # scalars, this rides the geometric augmentations as a single vector (a
-    # rotation mixes the components, so they must travel together). The all-(-1)
-    # sentinel for undefined momentum (e.g. LED) is preserved by the transforms.
-    data_dict["momentum_vec"] = np.stack(
-        [data_px, data_py, data_pz], axis=1
-    ).astype(np.float32)
+    # Packed (N, 3) UNIT momentum-direction vector for regression. Only the
+    # *direction* of the momentum is regressed here -- its magnitude |p| is
+    # captured separately by the scalar `momentum` (log10) head -- so each
+    # non-sentinel row is L2-normalized to unit length. Unlike the separate
+    # px/py/pz scalars, this rides the geometric augmentations as a single vector
+    # (a rotation mixes the components, so they must travel together); rotation
+    # and flip preserve unit norm. The all-(-1) sentinel for undefined momentum
+    # (e.g. LED) is left untouched so downstream sentinel masking still fires,
+    # and is preserved by the transforms.
+    momentum_vec = np.stack([data_px, data_py, data_pz], axis=1).astype(np.float32)
+    valid = ~(momentum_vec == -1).all(axis=1)
+    if valid.any():
+        nrm = np.linalg.norm(momentum_vec[valid], axis=1, keepdims=True)
+        momentum_vec[valid] = momentum_vec[valid] / np.clip(nrm, 1e-9, None)
+    data_dict["momentum_vec"] = momentum_vec
     data_dict["true_energy"] = data_true_energy.astype(np.float32)[:, None]
     data_dict["vertex"] = np.stack(
         [data_vtx_x, data_vtx_y, data_vtx_z], axis=1

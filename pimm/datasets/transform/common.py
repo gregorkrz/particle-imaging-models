@@ -71,16 +71,30 @@ def _apply_to_aux_directions(data_dict, transform):
     """Apply a LINEAR (norm-preserving) transform to opt-in DIRECTION keys.
 
     Keys listed in ``data_dict['aux_direction_keys']`` are unit vectors
-    (e.g. ``primary_direction``): only rotation/flip are applied (NOT
-    translation or scale), and the result is re-normalized to guard against
-    float drift. Callers must pass the linear part only (no centering).
+    (e.g. ``primary_direction``, the momentum-direction target): only
+    rotation/flip are applied (NOT translation or scale), and the result is
+    re-normalized to guard against float drift. For (N, 3) keys, rows equal to
+    the all-(-1) "undefined" sentinel are left untouched so downstream sentinel
+    masking still fires. Callers must pass the linear part only (no centering).
     """
     for key in data_dict.get("aux_direction_keys", ()) or ():
         v = data_dict.get(key)
-        if v is not None:
-            v = transform(np.asarray(v))
-            nrm = np.linalg.norm(v, axis=-1, keepdims=True)
-            data_dict[key] = (v / np.clip(nrm, 1e-9, None)).astype(np.float32, copy=False)
+        if v is None:
+            continue
+        v = np.asarray(v)
+        if v.ndim == 2 and v.shape[1] == 3:
+            # Preserve the missing-value sentinel (all components == -1).
+            keep = ~(v == -1).all(axis=1)
+            if keep.any():
+                out = v.copy()
+                d = transform(v[keep])
+                nrm = np.linalg.norm(d, axis=-1, keepdims=True)
+                out[keep] = d / np.clip(nrm, 1e-9, None)
+                data_dict[key] = out.astype(np.float32, copy=False)
+            continue
+        v = transform(v)
+        nrm = np.linalg.norm(v, axis=-1, keepdims=True)
+        data_dict[key] = (v / np.clip(nrm, 1e-9, None)).astype(np.float32, copy=False)
 
 
 def _apply_to_aux_vectors(data_dict, transform):
